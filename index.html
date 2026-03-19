@@ -18,38 +18,78 @@
 
   #app {
     display: flex;
+    flex-direction: column;
     width: 100vw;
     height: 100vh;
   }
 
-  /* ── Sidebar ──────────────────────────────────────────── */
-  #sidebar {
-    width: 220px;
-    min-width: 220px;
-    background: #1e1e1e;
-    border-right: 1px solid #333;
+  /* ── Toolbars ─────────────────────────────────────────── */
+  #toolbar-top,
+  #toolbar-bottom {
     display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-    overflow-x: hidden;
-    z-index: 100;
+    flex-direction: row;
+    align-items: stretch;
+    background: #1e1e1e;
+    width: 100%;
+    flex-shrink: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
   }
 
-  #sidebar::-webkit-scrollbar { width: 4px; }
-  #sidebar::-webkit-scrollbar-track { background: #1e1e1e; }
-  #sidebar::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  #toolbar-bottom-content {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    overflow-x: auto;
+    overflow-y: hidden;
+    width: 100%;
+  }
 
-  .sidebar-header {
-    padding: 12px;
+  #toolbar-bottom-content .toolbar-group {
+    justify-content: center;
+    align-self: stretch;
+  }
+
+  #toolbar-bottom-content .toolbar-group:last-child { border-right: none; }
+  #toolbar-top::-webkit-scrollbar,
+  #toolbar-bottom::-webkit-scrollbar { height: 3px; }
+  #toolbar-top::-webkit-scrollbar-track,
+  #toolbar-bottom::-webkit-scrollbar-track { background: #1e1e1e; }
+  #toolbar-top::-webkit-scrollbar-thumb,
+  #toolbar-bottom::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+  #toolbar-top  { border-bottom: 1px solid #333; }
+  #toolbar-bottom { border-top: 1px solid #333; }
+
+  #toolbar-bottom[data-mode="draw"] .select-only { display: none; }
+  #toolbar-bottom[data-mode="select"] .draw-only { display: none; }
+
+  .toolbar-group {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 12px 16px;
+    border-right: 1px solid #333;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .toolbar-group:last-child { border-right: none; }
+
+  .toolbar-logo {
+    padding: 0 18px;
     background: #2a2a2a;
+    border-right: 1px solid #1a1a1a;
+  }
+  .toolbar-logo-text {
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 0.5px;
     text-transform: uppercase;
-    color: #e94560;
-    text-align: center;
-    border-bottom: 1px solid #1a1a1a;
+    color: #fdfdfd;
+    white-space: nowrap;
   }
+
+  .toolbar-group .section-title { margin-bottom: 2px; }
 
   .section {
     padding: 10px 10px 6px;
@@ -92,7 +132,8 @@
 
   .btn-full { width: 100%; margin-bottom: 4px; }
 
-  .btn-mode { flex: 1; }
+  .btn-mode { min-width: 80px; background: #1e1e1e; border-color: #2a2a2a; }
+  .btn-mode:hover { background: #282828; border-color: #444; }
 
   .mode-row { display: flex; gap: 5px; }
 
@@ -136,7 +177,7 @@
   }
   .btn-danger:hover { background: #6a1515; }
 
-  .btn-sm { padding: 4px 8px; font-size: 11px; }
+  .btn-sm { padding: 4px 12px; font-size: 11px; height: 28px; }
 
   .number-row {
     display: flex;
@@ -165,9 +206,10 @@
 
   .ref-grid {
     display: grid;
-    grid-template-rows: repeat(5, auto);
-    grid-auto-flow: column;
-    gap: 4px;
+    grid-template-columns: repeat(4, auto);
+    grid-template-rows: repeat(2, auto);
+    grid-auto-flow: row;
+    gap: 6px;
   }
 
   /* Drawing controls */
@@ -179,15 +221,15 @@
   }
 
   .swatch {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    border: 2px solid #444;
+    width: 28px;
+    height: 28px;
+    border-radius: 5px;
+    border: 1px solid #444;
     cursor: pointer;
-    transition: border-color 0.15s, transform 0.1s;
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
-  .swatch:hover { transform: scale(1.15); }
-  .swatch.active { border-color: #FFD700; transform: scale(1.2); }
+  .swatch:hover { border-color: #555; }
+  .swatch.active { border-color: #e94560; box-shadow: 0 0 6px rgba(233, 69, 96, 0.4); }
 
   .width-row {
     display: flex;
@@ -357,110 +399,96 @@
     padding: 0;
   }
 
-  /* Status bar */
-  #status {
-    position: fixed;
-    bottom: 12px;
-    left: 230px;
-    right: 8px;
-    text-align: center;
-    font-size: 13px;
-    color: #ccc;
-    pointer-events: none;
-    z-index: 500;
-  }
-
-  #status span {
-    background: rgba(40, 40, 40, 0.92);
-    padding: 6px 16px;
-    border-radius: 10px;
-    border: 1px solid #555;
-  }
 </style>
 </head>
 <body>
 
 <div id="app">
-  <aside id="sidebar">
-    <div class="sidebar-header">⚑ Ref Whiteboard</div>
 
-    <!-- Mode -->
-    <div class="section">
-      <div class="section-title">Mode</div>
-      <div class="mode-row">
-        <button class="btn btn-mode active" id="btn-select" onclick="setMode('select')">⬆ Select</button>
-        <button class="btn btn-mode" id="btn-draw" onclick="setMode('draw')">✏ Draw</button>
-      </div>
-      <button class="btn btn-full btn-sm" id="btn-trace" onclick="toggleTraceMode()" style="margin-top:6px">✦ Trace</button>
+  <!-- ── Top toolbar ──────────────────────────────────────────── -->
+  <div id="toolbar-top">
+
+    <div class="toolbar-group toolbar-logo">
+      <span class="toolbar-logo-text">⚑ Ref Whiteboard</span>
     </div>
 
-    <!-- Team A -->
-    <div class="section">
-      <div class="section-title">Team A (Offense)</div>
-      <div class="mode-row">
-        <input type="number" id="num-a" class="number-input" min="0" max="99" value="1" style="width:48px">
-        <button class="btn btn-team-a placement-btn" id="btn-place-a" onclick="activatePlacement('A')" style="flex:1">+ Place</button>
-      </div>
-    </div>
-
-    <!-- Team B -->
-    <div class="section">
-      <div class="section-title">Team B (Defense)</div>
-      <div class="mode-row">
-        <input type="number" id="num-b" class="number-input" min="0" max="99" value="1" style="width:48px">
-        <button class="btn btn-team-b placement-btn" id="btn-place-b" onclick="activatePlacement('B')" style="flex:1">+ Place</button>
-      </div>
-    </div>
-
-    <!-- Items -->
-    <div class="section">
-      <div class="section-title">Items</div>
-      <div class="mode-row">
-        <button class="btn btn-ball placement-btn btn-mode" id="btn-place-ball" onclick="activatePlacement('ball')">⬟ Ball</button>
-        <button class="btn btn-flag placement-btn btn-mode" id="btn-place-flag" onclick="activatePlacement('flag')">⚑ Flag</button>
-      </div>
-    </div>
-
-    <!-- Officials -->
-    <div class="section">
-      <div class="section-title">Officials</div>
-      <div class="ref-grid" id="ref-grid"></div>
-    </div>
-
-    <!-- Drawing -->
-    <div class="section">
-      <div class="section-title">Drawing</div>
-      <div class="swatch-row" id="swatch-row"></div>
-      <div class="width-row" id="width-row"></div>
-      <button class="btn btn-full btn-sm" onclick="clearDrawings()">⌫ Clear Drawings</button>
-    </div>
-
-    <!-- Scenarios -->
-    <div class="section">
+    <div class="toolbar-group" style="margin-left:auto; border-left:1px solid #333">
       <div class="section-title">Scenarios</div>
-      <button class="btn btn-full btn-sm" onclick="saveScenario()">⬇ Save JSON</button>
-      <button class="btn btn-full btn-sm" style="margin-top:3px" onclick="loadScenarioClick()">⬆ Load JSON</button>
-      <input type="file" id="load-file" accept=".json" style="display:none" onchange="loadScenarioFile(this)">
+      <div class="mode-row">
+        <button class="btn btn-sm" onclick="saveScenario()">⬇ Save Scenario</button>
+        <button class="btn btn-sm" onclick="loadScenarioClick()">⬆ Load Scenario</button>
+        <input type="file" id="load-file" accept=".json" style="display:none" onchange="loadScenarioFile(this)">
+      </div>
     </div>
 
-    <!-- Actions -->
-    <div class="section">
+    <div class="toolbar-group">
       <div class="section-title">Actions</div>
-      <button class="btn btn-full btn-sm" onclick="undo()">↩ Undo</button>
-      <button class="btn btn-full btn-sm" style="margin-top:3px" onclick="redo()">↪ Redo</button>
-      <button class="btn btn-danger btn-full btn-sm" style="margin-top:3px" onclick="clearAllTokens()">✕ Clear All Tokens</button>
-      <button class="btn btn-danger btn-full btn-sm" style="margin-top:3px" onclick="resetEverything()">⟳ Reset Everything</button>
+      <div class="mode-row">
+        <button class="btn btn-sm" onclick="undo()">↩ Undo</button>
+        <button class="btn btn-sm" onclick="redo()">↪ Redo</button>
+<button class="btn btn-danger btn-sm" onclick="resetEverything()">⟳ Reset</button>
+      </div>
     </div>
-  </aside>
 
+  </div>
+
+  <!-- ── Field (unchanged) ────────────────────────────────── -->
   <div id="field-wrapper">
     <img id="field-img" src="./FieldImage.png" alt="Football Field" draggable="false">
     <div id="token-layer"></div>
     <canvas id="draw-canvas"></canvas>
   </div>
+
+  <!-- ── Bottom toolbar ───────────────────────────────────── -->
+  <div id="toolbar-bottom" data-mode="select">
+
+    <div id="toolbar-bottom-content">
+
+      <div class="toolbar-group" style="background:#2a2a2a;">
+        <div class="section-title">Mode</div>
+        <button class="btn btn-mode active" id="btn-select" onclick="setMode('select')">⬆ Select</button>
+        <button class="btn btn-mode" id="btn-draw" onclick="setMode('draw')">✏ Draw</button>
+      </div>
+
+      <div class="toolbar-group select-only">
+        <div class="section-title">Teams</div>
+        <button class="btn btn-team-a placement-btn btn-sm" id="btn-place-a" onclick="activatePlacement('A')">Add Team A player</button>
+        <button class="btn btn-team-b placement-btn btn-sm" id="btn-place-b" onclick="activatePlacement('B')">Add Team B player</button>
+      </div>
+
+      <div class="toolbar-group select-only">
+        <div class="section-title">Items</div>
+        <button class="btn btn-ball placement-btn btn-sm" id="btn-place-ball" onclick="activatePlacement('ball')">Move Ball</button>
+        <button class="btn btn-flag placement-btn btn-sm" id="btn-place-flag" onclick="activatePlacement('flag')">Place Flag</button>
+      </div>
+
+      <div class="toolbar-group select-only">
+        <div class="section-title">Officials</div>
+        <div class="ref-grid" id="ref-grid"></div>
+      </div>
+
+      <div class="toolbar-group select-only">
+        <div class="section-title">Trace</div>
+        <button class="btn btn-sm" id="btn-trace" onclick="toggleTraceMode()">✦ Trace</button>
+      </div>
+
+      <div class="toolbar-group draw-only">
+        <div class="section-title">Colour</div>
+        <div class="swatch-row" id="swatch-row" style="margin-bottom:0; flex-wrap:wrap; width:168px"></div>
+      </div>
+
+      <div class="toolbar-group draw-only">
+        <div class="section-title">Weight</div>
+        <div class="width-row" id="width-row" style="margin-bottom:0"></div>
+        <button class="btn btn-sm" onclick="clearDrawings()">⌫ Clear</button>
+      </div>
+
+    </div>
+
+  </div>
+
 </div>
 
-<div id="status"><span id="status-text">Select mode — click a placement button, then click on the field</span></div>
 
 <script>
 // ── State ──────────────────────────────────────────────────
@@ -492,7 +520,6 @@ const fieldWrapper = document.getElementById('field-wrapper');
 const fieldImg     = document.getElementById('field-img');
 const tokenLayer   = document.getElementById('token-layer');
 const canvas       = document.getElementById('draw-canvas');
-const statusText   = document.getElementById('status-text');
 
 // ── Officials list ─────────────────────────────────────────
 const OFFICIALS = ['R', 'U', 'D', 'L', 'B', 'S', 'F', 'C'];
@@ -504,6 +531,11 @@ const DRAW_COLORS = [
   { color: '#FFD700', label: 'Yellow' },
   { color: '#2196F3', label: 'Blue' },
   { color: '#F44336', label: 'Red' },
+  { color: '#FF6B00', label: 'Orange' },
+  { color: '#4CAF50', label: 'Green' },
+  { color: '#9C27B0', label: 'Purple' },
+  { color: '#00BCD4', label: 'Cyan' },
+  { color: '#E040FB', label: 'Magenta' },
 ];
 const DRAW_WIDTHS = [2, 5, 10];
 
@@ -552,7 +584,6 @@ function init() {
     }
   });
 
-  setStatus('Select mode — click a placement button then click the field');
 }
 
 // ── Measure field ──────────────────────────────────────────
@@ -585,9 +616,6 @@ function resizeOverlays() {
 function toggleTraceMode() {
   state.traceMode = !state.traceMode;
   document.getElementById('btn-trace').classList.toggle('active', state.traceMode);
-  setStatus(state.traceMode
-    ? 'Trace mode on — drag tokens to paint trails'
-    : 'Trace mode off');
 }
 
 function traceColorFor(team) {
@@ -606,6 +634,7 @@ function setMode(mode) {
 
   document.getElementById('btn-select').classList.toggle('active', mode === 'select');
   document.getElementById('btn-draw').classList.toggle('active', mode === 'draw');
+  document.getElementById('toolbar-bottom').dataset.mode = mode;
 
   if (mode === 'draw') {
     canvas.style.zIndex = '30';
@@ -613,13 +642,11 @@ function setMode(mode) {
     tokenLayer.style.pointerEvents = 'none';
     document.body.classList.add('drawing-mode');
     document.body.classList.remove('placing');
-    setStatus('Draw mode — click and drag to draw routes');
   } else {
     canvas.style.zIndex = '10';
     canvas.style.pointerEvents = 'none';
     tokenLayer.style.pointerEvents = 'auto';
     document.body.classList.remove('drawing-mode');
-    setStatus('Select mode — click a placement button then click the field');
   }
 }
 
@@ -628,8 +655,7 @@ function activatePlacement(type) {
   if (state.mode === 'draw') setMode('select');
 
   let label = '';
-  if (type === 'A')         label = String(document.getElementById('num-a').value).padStart(0);
-  else if (type === 'B')    label = String(document.getElementById('num-b').value).padStart(0);
+  if (type === 'A' || type === 'B') label = '1';
   else if (type === 'ball') label = '';
   else if (type === 'flag') label = '';
   else if (OFFICIALS.includes(type)) {
@@ -644,7 +670,6 @@ function activatePlacement(type) {
     state.placementType = null;
     clearPlacementHighlight();
     document.body.classList.remove('placing');
-    setStatus('Select mode — click a placement button then click the field');
     return;
   }
 
@@ -652,7 +677,6 @@ function activatePlacement(type) {
   clearPlacementHighlight();
   highlightPlacementButton(type, label);
   document.body.classList.add('placing');
-  setStatus('Click on the field to place — click this button again to stop');
 }
 
 function activateOfficialPlacement(officialLabel) {
@@ -666,7 +690,6 @@ function activateOfficialPlacement(officialLabel) {
     state.placementType = null;
     clearPlacementHighlight();
     document.body.classList.remove('placing');
-    setStatus('Select mode — click a placement button then click the field');
     return;
   }
 
@@ -679,7 +702,6 @@ function activateOfficialPlacement(officialLabel) {
   });
 
   document.body.classList.add('placing');
-  setStatus(`Click on the field to place ${officialLabel} — hold Shift to keep placing`);
 }
 
 function clearPlacementHighlight() {
@@ -714,9 +736,6 @@ function onFieldClick(e) {
     state.placementType = null;
     clearPlacementHighlight();
     document.body.classList.remove('placing');
-    setStatus('Official placed — click another button or select to move');
-  } else {
-    setStatus('Token placed — click again to place another, or click the button to stop');
   }
 }
 
@@ -1092,7 +1111,6 @@ function buildSwatches() {
     const sw = document.createElement('div');
     sw.className = 'swatch' + (i === 0 ? ' active' : '');
     sw.style.background = color;
-    sw.style.border = color === '#ffffff' ? '2px solid #888' : '2px solid ' + color;
     sw.title = label;
     sw.onclick = () => {
       state.draw.color = color;
@@ -1149,7 +1167,6 @@ function saveScenario() {
   a.download = 'ref-scenario.json';
   a.click();
   URL.revokeObjectURL(url);
-  setStatus('Scenario saved');
 }
 
 function loadScenarioClick() {
@@ -1167,7 +1184,6 @@ function loadScenarioFile(input) {
       (data.tokens || []).forEach(t => placeToken(t.xFrac, t.yFrac, t.team, t.label));
       state.strokes = data.strokes || [];
       redrawCanvas();
-      setStatus('Scenario loaded');
     } catch (err) {
       alert('Invalid scenario file: ' + err.message);
     }
@@ -1191,13 +1207,8 @@ function resetEverything() {
   if (!confirm('Reset everything — clear all tokens and drawings?')) return;
   clearAll();
   setMode('select');
-  setStatus('Reset complete');
 }
 
-// ── Status ──────────────────────────────────────────────────
-function setStatus(msg) {
-  statusText.textContent = msg;
-}
 
 // ── Boot ────────────────────────────────────────────────────
 init();
