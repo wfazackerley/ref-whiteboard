@@ -253,6 +253,7 @@
     position: absolute;
     z-index: 10;
     pointer-events: none;
+    touch-action: none;
   }
 
   /* Placement cursor */
@@ -478,6 +479,8 @@ const state = {
   currentTrace: null,
   draw: { color: '#ffffff', width: 5 },
   field: { x: 0, y: 0, w: 0, h: 0 },
+  penDetected: false,
+  penDetectedTimer: null,
 };
 
 let _resizeTimer = null;
@@ -525,17 +528,18 @@ function init() {
   });
 
   // Canvas drawing events
-  canvas.addEventListener('mousedown', onCanvasMouseDown);
-  canvas.addEventListener('mousemove', onCanvasMouseMove);
-  canvas.addEventListener('mouseup',   onCanvasMouseUp);
-  canvas.addEventListener('mouseleave', onCanvasMouseLeave);
+  canvas.addEventListener('pointerdown',  onCanvasPointerDown);
+  canvas.addEventListener('pointermove',  onCanvasPointerMove);
+  canvas.addEventListener('pointerup',    onCanvasPointerUp);
+  canvas.addEventListener('pointerleave', onCanvasPointerLeave);
+  canvas.addEventListener('pointercancel', onCanvasPointerLeave);
 
   // Field click (for placement)
   fieldWrapper.addEventListener('click', onFieldClick);
 
-  // Global mouse events for drag
-  document.addEventListener('mousemove', onDocMouseMove);
-  document.addEventListener('mouseup',   onDocMouseUp);
+  // Global pointer events for drag
+  document.addEventListener('pointermove', onDocPointerMove);
+  document.addEventListener('pointerup',   onDocPointerUp);
 
   // Undo shortcut
   document.addEventListener('keydown', e => {
@@ -587,11 +591,11 @@ function toggleTraceMode() {
 }
 
 function traceColorFor(team) {
-  if (team === 'A')    return 'rgba(21, 101, 192, 0.8)';
-  if (team === 'B')    return 'rgba(198, 40, 40, 0.8)';
+  if (team === 'A')    return '#64B5F6';
+  if (team === 'B')    return '#E57373';
   if (team === 'ref')  return 'rgba(255, 215, 0, 0.9)';
   if (team === 'flag') return 'rgba(255, 215, 0, 0.7)';
-  return 'rgba(139, 69, 19, 0.7)'; // ball
+  return '#C49A6C'; // ball
 }
 
 // ── Mode ────────────────────────────────────────────────────
@@ -756,9 +760,10 @@ function createTokenEl(token) {
   el.dataset.id = token.id;
 
   // Drag start
-  el.addEventListener('mousedown', e => {
+  el.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;
     e.stopPropagation();
+    el.setPointerCapture(e.pointerId);
     beginDrag(e, token);
   });
 
@@ -836,8 +841,8 @@ function beginDrag(e, token) {
   e.preventDefault();
   state.dragging = {
     token,
-    startMouseX: e.clientX,
-    startMouseY: e.clientY,
+    startPointerX: e.clientX,
+    startPointerY: e.clientY,
     startXFrac: token.xFrac,
     startYFrac: token.yFrac,
   };
@@ -854,12 +859,12 @@ function beginDrag(e, token) {
   }
 }
 
-function onDocMouseMove(e) {
+function onDocPointerMove(e) {
   if (!state.dragging) return;
-  const { token, startMouseX, startMouseY, startXFrac, startYFrac } = state.dragging;
+  const { token, startPointerX, startPointerY, startXFrac, startYFrac } = state.dragging;
   const { w, h } = state.field;
-  const dx = e.clientX - startMouseX;
-  const dy = e.clientY - startMouseY;
+  const dx = e.clientX - startPointerX;
+  const dy = e.clientY - startPointerY;
   token.xFrac = Math.max(0, Math.min(1, startXFrac + dx / w));
   token.yFrac = Math.max(0, Math.min(1, startYFrac + dy / h));
   repositionToken(token);
@@ -879,7 +884,7 @@ function onDocMouseMove(e) {
   }
 }
 
-function onDocMouseUp(e) {
+function onDocPointerUp(e) {
   if (!state.dragging) return;
   const { token, startXFrac, startYFrac } = state.dragging;
   const moved = token.xFrac !== startXFrac || token.yFrac !== startYFrac;
@@ -899,11 +904,24 @@ function onDocMouseUp(e) {
   document.body.style.cursor = '';
 }
 
+// ── Pen detection ───────────────────────────────────────────
+function onPenActivity() {
+  state.penDetected = true;
+  clearTimeout(state.penDetectedTimer);
+  state.penDetectedTimer = setTimeout(() => { state.penDetected = false; }, 3000);
+}
+
 // ── Canvas drawing ──────────────────────────────────────────
 function getCtx() { return canvas.getContext('2d'); }
 
-function onCanvasMouseDown(e) {
+function onCanvasPointerDown(e) {
   if (state.mode !== 'draw') return;
+  if (e.pointerType === 'pen') onPenActivity();
+  // Palm rejection: if pen is active, ignore finger touches
+  if (state.penDetected && e.pointerType === 'touch') return;
+  // Ignore secondary pointers (multi-touch)
+  if (state.drawing) return;
+  canvas.setPointerCapture(e.pointerId);
   state.drawing = true;
   const pt = canvasPt(e);
   state.currentStroke = {
@@ -916,8 +934,10 @@ function onCanvasMouseDown(e) {
   ctx.moveTo(pt.xFrac * canvas.width, pt.yFrac * canvas.height);
 }
 
-function onCanvasMouseMove(e) {
+function onCanvasPointerMove(e) {
   if (!state.drawing || !state.currentStroke) return;
+  if (e.pointerType === 'pen') onPenActivity();
+  if (state.penDetected && e.pointerType === 'touch') return;
   const pt = canvasPt(e);
   state.currentStroke.points.push(pt);
 
@@ -930,11 +950,11 @@ function onCanvasMouseMove(e) {
   ctx.stroke();
 }
 
-function onCanvasMouseUp(e) {
+function onCanvasPointerUp(e) {
   commitStroke();
 }
 
-function onCanvasMouseLeave(e) {
+function onCanvasPointerLeave(e) {
   if (state.drawing) commitStroke();
 }
 
