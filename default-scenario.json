@@ -1,0 +1,191 @@
+{
+  "tokens": [
+    {
+      "team": "ball",
+      "label": "",
+      "xFrac": 0.3788,
+      "yFrac": 0.4969
+    },
+    {
+      "team": "A",
+      "label": "54",
+      "xFrac": 0.3626,
+      "yFrac": 0.4969
+    },
+    {
+      "team": "A",
+      "label": "64",
+      "xFrac": 0.3623,
+      "yFrac": 0.4639
+    },
+    {
+      "team": "A",
+      "label": "74",
+      "xFrac": 0.3618,
+      "yFrac": 0.4309
+    },
+    {
+      "team": "A",
+      "label": "66",
+      "xFrac": 0.3626,
+      "yFrac": 0.5278
+    },
+    {
+      "team": "A",
+      "label": "76",
+      "xFrac": 0.3626,
+      "yFrac": 0.5623
+    },
+    {
+      "team": "A",
+      "label": "86",
+      "xFrac": 0.3535,
+      "yFrac": 0.5978
+    },
+    {
+      "team": "A",
+      "label": "8",
+      "xFrac": 0.338,
+      "yFrac": 0.4957
+    },
+    {
+      "team": "A",
+      "label": "24",
+      "xFrac": 0.3337,
+      "yFrac": 0.5418
+    },
+    {
+      "team": "A",
+      "label": "14",
+      "xFrac": 0.3613,
+      "yFrac": 0.7516
+    },
+    {
+      "team": "A",
+      "label": "16",
+      "xFrac": 0.3464,
+      "yFrac": 0.3075
+    },
+    {
+      "team": "A",
+      "label": "18",
+      "xFrac": 0.36,
+      "yFrac": 0.2386
+    },
+    {
+      "team": "B",
+      "label": "53",
+      "xFrac": 0.3937,
+      "yFrac": 0.4477
+    },
+    {
+      "team": "B",
+      "label": "55",
+      "xFrac": 0.3937,
+      "yFrac": 0.4957
+    },
+    {
+      "team": "B",
+      "label": "57",
+      "xFrac": 0.3931,
+      "yFrac": 0.5461
+    },
+    {
+      "team": "B",
+      "label": "43",
+      "xFrac": 0.4142,
+      "yFrac": 0.4076
+    },
+    {
+      "team": "B",
+      "label": "45",
+      "xFrac": 0.4164,
+      "yFrac": 0.4637
+    },
+    {
+      "team": "B",
+      "label": "47",
+      "xFrac": 0.4171,
+      "yFrac": 0.5234
+    },
+    {
+      "team": "B",
+      "label": "49",
+      "xFrac": 0.4154,
+      "yFrac": 0.5881
+    },
+    {
+      "team": "B",
+      "label": "23",
+      "xFrac": 0.3983,
+      "yFrac": 0.7491
+    },
+    {
+      "team": "B",
+      "label": "25",
+      "xFrac": 0.4268,
+      "yFrac": 0.3014
+    },
+    {
+      "team": "B",
+      "label": "27",
+      "xFrac": 0.4054,
+      "yFrac": 0.2362
+    },
+    {
+      "team": "B",
+      "label": "34",
+      "xFrac": 0.4797,
+      "yFrac": 0.5626
+    },
+    {
+      "team": "ref",
+      "label": "R",
+      "xFrac": 0.2764,
+      "yFrac": 0.5634
+    },
+    {
+      "team": "ref",
+      "label": "U",
+      "xFrac": 0.4384,
+      "yFrac": 0.4779
+    },
+    {
+      "team": "ref",
+      "label": "D",
+      "xFrac": 0.3782,
+      "yFrac": 0.0763
+    },
+    {
+      "team": "ref",
+      "label": "L",
+      "xFrac": 0.3788,
+      "yFrac": 0.9238
+    },
+    {
+      "team": "ref",
+      "label": "B",
+      "xFrac": 0.5797,
+      "yFrac": 0.5203
+    },
+    {
+      "team": "ref",
+      "label": "S",
+      "xFrac": 0.5557,
+      "yFrac": 0.075
+    },
+    {
+      "team": "ref",
+      "label": "F",
+      "xFrac": 0.5564,
+      "yFrac": 0.925
+    },
+    {
+      "team": "ref",
+      "label": "C",
+      "xFrac": 0.2745,
+      "yFrac": 0.4293
+    }
+  ],
+  "strokes": []
+}

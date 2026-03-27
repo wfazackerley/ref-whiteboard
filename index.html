@@ -180,7 +180,7 @@
     border: 1px solid #0e0e0e;
     border-radius: 8px;
     box-shadow: 0 0 8px rgba(0,0,0,0.25);
-    height: 56px;
+    height: 48px;
     padding: 0 8px;
     white-space: nowrap;
     z-index: 100;
@@ -201,9 +201,65 @@
     transition: background 0.15s;
     user-select: none;
     flex-shrink: 0;
+    position: relative;
   }
   .sp-btn:hover { background: rgba(255,255,255,0.07); }
   .sp-btn.active { background: #484848; }
+  .sp-btn.placed::after {
+    content: '';
+    position: absolute;
+    bottom: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #4CAF50;
+  }
+  .sp-btn.placed.active::after {
+    background: #faca0b;
+  }
+
+  #subpanel-select { display: flex; padding: 0 12px; }
+  #subpanel-place-a,
+  #subpanel-place-b { gap: 8px; padding: 0 12px; font-size: 16px; color: #fff; }
+  .player-count-value { font-weight: 900; }
+
+  .trace-toggle {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .trace-track {
+    width: 40px;
+    height: 24px;
+    border-radius: 6px;
+    padding: 4px;
+    background: #666;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    transition: background-color 0.2s ease;
+  }
+  .trace-knob {
+    width: 16px;
+    height: 16px;
+    border-radius: 2px;
+    background: #fff;
+    transform: translateX(0);
+    transition: transform 0.2s ease, background-color 0.2s ease;
+  }
+  .trace-track.on { background: #faca0b; }
+  .trace-track.on .trace-knob {
+    transform: translateX(16px);
+    background: #3d3d3d;
+  }
+  .trace-label {
+    font-size: 15px;
+    color: #fff;
+  }
 
   .sp-divider {
     width: 1px;
@@ -250,10 +306,6 @@
   .width-btn:hover { background: rgba(255,255,255,0.07); }
   .width-btn.active { background: #484848; border-color: #555; }
 
-  .width-preview {
-    background: #e0e0e0;
-    border-radius: 50%;
-  }
 
   #width-row {
     display: flex;
@@ -444,12 +496,29 @@
 
     <!-- Select sub-panel: trace toggle -->
     <div id="subpanel-select" class="subpanel">
-      <button class="sp-btn" id="btn-trace" onclick="toggleTraceMode()">Trace</button>
+      <div class="trace-toggle" onclick="toggleTraceMode()">
+        <div class="trace-track" id="trace-track">
+          <div class="trace-knob"></div>
+        </div>
+        <span class="trace-label">Trace Movement</span>
+      </div>
     </div>
 
     <!-- Official sub-panel: position type selector -->
     <div id="subpanel-official" class="subpanel">
       <div id="official-type-btns" style="display:flex;align-items:center;gap:2px;"></div>
+    </div>
+
+    <!-- Place-A sub-panel: player count -->
+    <div id="subpanel-place-a" class="subpanel">
+      <span class="player-count-label">Team A Player Count:</span>
+      <span class="player-count-value" id="count-a">0</span>
+    </div>
+
+    <!-- Place-B sub-panel: player count -->
+    <div id="subpanel-place-b" class="subpanel">
+      <span class="player-count-label">Team B Player Count:</span>
+      <span class="player-count-value" id="count-b">0</span>
     </div>
 
     <!-- Draw sub-panel: colour + weight -->
@@ -463,7 +532,7 @@
     <div id="toolbar-bottom">
       <button class="tb-btn active" id="btn-mode-select" onclick="setMode('select')">
         <img src="./media/icon-arrow-pointer.svg" width="20" height="20" alt="">
-        Select
+        Move
       </button>
       <div class="tb-divider"></div>
       <button class="tb-btn" id="btn-mode-place-a" onclick="setMode('place-a')">
@@ -561,9 +630,19 @@ function init() {
 
   // Image load
   if (fieldImg.complete && fieldImg.naturalWidth > 0) {
-    requestAnimationFrame(measureField);
+    requestAnimationFrame(() => {
+      measureField();
+      loadScenarioData(DEFAULT_SCENARIO);
+      state.history = [];
+      state.future = [];
+    });
   }
-  fieldImg.addEventListener('load', () => requestAnimationFrame(measureField));
+  fieldImg.addEventListener('load', () => requestAnimationFrame(() => {
+    measureField();
+    loadScenarioData(DEFAULT_SCENARIO);
+    state.history = [];
+    state.future = [];
+  }));
 
   // Resize
   window.addEventListener('resize', () => {
@@ -626,10 +705,17 @@ function resizeOverlays() {
   canvas.height = Math.round(h);
 }
 
+// ── Player counts ────────────────────────────────────────────
+function updatePlayerCounts() {
+  document.getElementById('count-a').textContent = state.tokens.filter(t => t.team === 'A').length;
+  document.getElementById('count-b').textContent = state.tokens.filter(t => t.team === 'B').length;
+  updateOfficialSubpanel();
+}
+
 // ── Trace mode ──────────────────────────────────────────────
 function toggleTraceMode() {
   state.traceMode = !state.traceMode;
-  document.getElementById('btn-trace').classList.toggle('active', state.traceMode);
+  document.getElementById('trace-track').classList.toggle('on', state.traceMode);
 }
 
 function traceColorFor(team) {
@@ -653,6 +739,8 @@ function setMode(mode) {
 
   // Show/hide sub-panels
   document.getElementById('subpanel-select').style.display   = mode === 'select'   ? 'flex' : 'none';
+  document.getElementById('subpanel-place-a').style.display  = mode === 'place-a'  ? 'flex' : 'none';
+  document.getElementById('subpanel-place-b').style.display  = mode === 'place-b'  ? 'flex' : 'none';
   document.getElementById('subpanel-official').style.display = mode === 'official' ? 'flex' : 'none';
   document.getElementById('subpanel-draw').style.display     = mode === 'draw'     ? 'flex' : 'none';
 
@@ -667,6 +755,13 @@ function setMode(mode) {
     tokenLayer.style.pointerEvents = 'auto';
   }
 
+  // When entering official mode, select first unplaced official, or none if all placed
+  if (mode === 'official') {
+    const placed = getPlacedOfficials();
+    const firstUnplaced = OFFICIALS.find(o => !placed.has(o)) ?? null;
+    setOfficialType(firstUnplaced);
+  }
+
   // Body classes
   document.body.classList.toggle('drawing-mode', mode === 'draw');
   document.body.classList.toggle('erase-mode',   mode === 'erase');
@@ -674,11 +769,32 @@ function setMode(mode) {
 }
 
 // ── Official type selection ─────────────────────────────────
+function getPlacedOfficials() {
+  return new Set(state.tokens.filter(t => t.team === 'ref').map(t => t.label));
+}
+
+function nextUnplacedOfficial() {
+  const placed = getPlacedOfficials();
+  if (placed.size >= OFFICIALS.length) return null;
+  const currentIdx = OFFICIALS.indexOf(state.officialType);
+  for (let i = 1; i <= OFFICIALS.length; i++) {
+    const next = OFFICIALS[(currentIdx + i) % OFFICIALS.length];
+    if (!placed.has(next)) return next;
+  }
+  return null;
+}
+
+function updateOfficialSubpanel() {
+  const placed = getPlacedOfficials();
+  document.querySelectorAll('#official-type-btns .sp-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.official === state.officialType);
+    btn.classList.toggle('placed', placed.has(btn.dataset.official));
+  });
+}
+
 function setOfficialType(type) {
   state.officialType = type;
-  document.querySelectorAll('#official-type-btns .sp-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.official === type);
-  });
+  updateOfficialSubpanel();
 }
 
 // ── Field click (placement) ─────────────────────────────────
@@ -697,9 +813,29 @@ function onFieldClick(e) {
 
   if (state.mode === 'place-a')    placeToken(xFrac, yFrac, 'A', '1');
   else if (state.mode === 'place-b') placeToken(xFrac, yFrac, 'B', '1');
-  else if (state.mode === 'official') placeToken(xFrac, yFrac, 'ref', state.officialType);
+  else if (state.mode === 'official') placeOrMoveOfficial(xFrac, yFrac);
   else if (state.mode === 'flag')  placeToken(xFrac, yFrac, 'flag', '');
   else if (state.mode === 'ball')  placeToken(xFrac, yFrac, 'ball', '');
+}
+
+// ── Place or move official ──────────────────────────────────
+function placeOrMoveOfficial(xFrac, yFrac) {
+  if (!state.officialType) return;
+  const placed = getPlacedOfficials();
+  if (placed.has(state.officialType)) {
+    const token = state.tokens.find(t => t.team === 'ref' && t.label === state.officialType);
+    if (!token) return;
+    const oldXFrac = token.xFrac;
+    const oldYFrac = token.yFrac;
+    token.xFrac = xFrac;
+    token.yFrac = yFrac;
+    repositionToken(token);
+    state.history.push({ type: 'move', token, oldXFrac, oldYFrac, newXFrac: xFrac, newYFrac: yFrac, trace: null });
+    state.future = [];
+  } else {
+    placeToken(xFrac, yFrac, 'ref', state.officialType);
+    setOfficialType(nextUnplacedOfficial());
+  }
 }
 
 // ── Place token ────────────────────────────────────────────
@@ -724,7 +860,7 @@ function placeToken(xFrac, yFrac, team, label) {
     state.history.push({ type: 'place', token });
   }
   state.future = [];
-
+  updatePlayerCounts();
   return token;
 }
 
@@ -781,6 +917,7 @@ function removeToken(token) {
   token.el.remove();
   const idx = state.tokens.indexOf(token);
   if (idx !== -1) state.tokens.splice(idx, 1);
+  updatePlayerCounts();
 }
 
 // ── Inline label editing ────────────────────────────────────
@@ -817,8 +954,10 @@ function editTokenLabel(token) {
 }
 
 // ── Dragging ───────────────────────────────────────────────
+const DRAG_MODES = new Set(['select', 'place-a', 'place-b', 'official', 'flag']);
+
 function beginDrag(e, token) {
-  if (state.mode !== 'select') return;
+  if (!DRAG_MODES.has(state.mode)) return;
   e.preventDefault();
   state.dragging = {
     token,
@@ -1063,6 +1202,7 @@ function undo() {
     tokenLayer.appendChild(entry.token.el);
     repositionToken(entry.token);
   }
+  updatePlayerCounts();
 }
 
 function redo() {
@@ -1094,6 +1234,7 @@ function redo() {
   } else if (entry.type === 'remove') {
     removeToken(entry.token);
   }
+  updatePlayerCounts();
 }
 
 function clearDrawings() {
@@ -1132,6 +1273,8 @@ function buildSwatches() {
   });
 }
 
+const DRAW_WIDTH_ICONS = ['icon-weight-light', 'icon-weight-medium', 'icon-weight-heavy'];
+
 function buildWidthBtns() {
   const row = document.getElementById('width-row');
   DRAW_WIDTHS.forEach((w, i) => {
@@ -1139,11 +1282,12 @@ function buildWidthBtns() {
     btn.className = 'width-btn' + (i === 1 ? ' active' : '');
     btn.title = w + 'px';
 
-    const preview = document.createElement('div');
-    preview.className = 'width-preview';
-    preview.style.width  = Math.max(4, w * 1.5) + 'px';
-    preview.style.height = Math.max(4, w * 1.5) + 'px';
-    btn.appendChild(preview);
+    const img = document.createElement('img');
+    img.src = `./media/${DRAW_WIDTH_ICONS[i]}.svg`;
+    img.width = 20;
+    img.height = 20;
+    img.alt = '';
+    btn.appendChild(img);
 
     btn.onclick = () => {
       state.draw.width = w;
@@ -1183,17 +1327,20 @@ function loadScenarioClick() {
   document.getElementById('load-file').click();
 }
 
+function loadScenarioData(data) {
+  clearAll();
+  (data.tokens || []).forEach(t => placeToken(t.xFrac, t.yFrac, t.team, t.label));
+  state.strokes = data.strokes || [];
+  redrawCanvas();
+}
+
 function loadScenarioFile(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
     try {
-      const data = JSON.parse(e.target.result);
-      clearAll();
-      (data.tokens || []).forEach(t => placeToken(t.xFrac, t.yFrac, t.team, t.label));
-      state.strokes = data.strokes || [];
-      redrawCanvas();
+      loadScenarioData(JSON.parse(e.target.result));
     } catch (err) {
       alert('Invalid scenario file: ' + err.message);
     }
@@ -1206,6 +1353,7 @@ function loadScenarioFile(input) {
 function clearAllTokens() {
   [...state.tokens].forEach(t => t.el.remove());
   state.tokens = [];
+  updatePlayerCounts();
 }
 
 function clearAll() {
@@ -1219,6 +1367,9 @@ function resetEverything() {
   setMode('select');
 }
 
+
+// ── Default scenario ─────────────────────────────────────────
+const DEFAULT_SCENARIO = {"tokens":[{"team":"ball","label":"","xFrac":0.3788,"yFrac":0.4969},{"team":"A","label":"54","xFrac":0.3626,"yFrac":0.4969},{"team":"A","label":"64","xFrac":0.3623,"yFrac":0.4639},{"team":"A","label":"74","xFrac":0.3618,"yFrac":0.4309},{"team":"A","label":"66","xFrac":0.3626,"yFrac":0.5278},{"team":"A","label":"76","xFrac":0.3626,"yFrac":0.5623},{"team":"A","label":"86","xFrac":0.3535,"yFrac":0.5978},{"team":"A","label":"8","xFrac":0.338,"yFrac":0.4957},{"team":"A","label":"24","xFrac":0.3337,"yFrac":0.5418},{"team":"A","label":"14","xFrac":0.3613,"yFrac":0.7516},{"team":"A","label":"16","xFrac":0.3464,"yFrac":0.3075},{"team":"A","label":"18","xFrac":0.36,"yFrac":0.2386},{"team":"B","label":"53","xFrac":0.3937,"yFrac":0.4477},{"team":"B","label":"55","xFrac":0.3937,"yFrac":0.4957},{"team":"B","label":"57","xFrac":0.3931,"yFrac":0.5461},{"team":"B","label":"43","xFrac":0.4142,"yFrac":0.4076},{"team":"B","label":"45","xFrac":0.4164,"yFrac":0.4637},{"team":"B","label":"47","xFrac":0.4171,"yFrac":0.5234},{"team":"B","label":"49","xFrac":0.4154,"yFrac":0.5881},{"team":"B","label":"23","xFrac":0.3983,"yFrac":0.7491},{"team":"B","label":"25","xFrac":0.4268,"yFrac":0.3014},{"team":"B","label":"27","xFrac":0.4054,"yFrac":0.2362},{"team":"B","label":"34","xFrac":0.4797,"yFrac":0.5626},{"team":"ref","label":"R","xFrac":0.2764,"yFrac":0.5634},{"team":"ref","label":"U","xFrac":0.4384,"yFrac":0.4779},{"team":"ref","label":"D","xFrac":0.3782,"yFrac":0.0763},{"team":"ref","label":"L","xFrac":0.3788,"yFrac":0.9238},{"team":"ref","label":"B","xFrac":0.5797,"yFrac":0.5203},{"team":"ref","label":"S","xFrac":0.5557,"yFrac":0.075},{"team":"ref","label":"F","xFrac":0.5564,"yFrac":0.925},{"team":"ref","label":"C","xFrac":0.2745,"yFrac":0.4293}],"strokes":[]};
 
 // ── Boot ────────────────────────────────────────────────────
 init();
