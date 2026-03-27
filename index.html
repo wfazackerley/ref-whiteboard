@@ -6,9 +6,28 @@
 <title>Referee Whiteboard</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  button { font-family: inherit; font-size: inherit; }
+
+  @font-face {
+    font-family: 'Circular Std';
+    src: url('./fonts/CircularStd-Book.woff2') format('woff2'),
+         url('./fonts/CircularStd-Book.woff') format('woff');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: 'Circular Std';
+    src: url('./fonts/CircularStd-Black.woff2') format('woff2'),
+         url('./fonts/CircularStd-Black.woff') format('woff');
+    font-weight: 900;
+    font-style: normal;
+    font-display: swap;
+  }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'Circular Std', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: #1a1a1a;
     color: #e0e0e0;
     overflow: hidden;
@@ -26,251 +45,226 @@
     background-size: 300px;
   }
 
-  /* ── Toolbars ─────────────────────────────────────────── */
-  #toolbar-top,
+  /* ── Top toolbar ──────────────────────────────────────── */
+  #toolbar-top {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    width: 100%;
+    flex-shrink: 0;
+    height: 66px;
+  }
+
+  .toolbar-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 24px;
+    flex-shrink: 0;
+    background: #313131;
+    border: 1px solid #0e0e0e;
+    border-top: none;
+    border-left: none;
+    border-radius: 0 0 8px 0;
+    box-shadow: 0 0 8px rgba(0,0,0,0.25);
+  }
+
+  #toolbar-top-actions {
+    display: flex;
+    align-items: stretch;
+    background: #313131;
+    border: 1px solid #0e0e0e;
+    border-top: none;
+    border-right: none;
+    border-radius: 0 0 0 8px;
+    box-shadow: 0 0 8px rgba(0,0,0,0.25);
+    margin-left: auto;
+    padding: 0 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  #toolbar-top-actions::-webkit-scrollbar { height: 3px; }
+  #toolbar-top-actions::-webkit-scrollbar-track { background: transparent; }
+  #toolbar-top-actions::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+  .top-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 16px;
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 16px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+    flex-shrink: 0;
+  }
+  .top-btn:hover { background: rgba(255,255,255,0.07); }
+  .top-btn.danger { color: #ff7878; }
+  .top-btn svg, .top-btn img { width: 20px; height: 20px; flex-shrink: 0; }
+
+  .top-divider {
+    width: 1px;
+    background: #0e0e0e;
+    align-self: stretch;
+    flex-shrink: 0;
+  }
+
+  /* ── Bottom toolbar ────────────────────────────────────── */
+  #toolbar-bottom-wrapper {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+
   #toolbar-bottom {
     display: flex;
     flex-direction: row;
-    align-items: stretch;
-    background: rgba(20, 20, 20, 0.72);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    width: 100%;
-    flex-shrink: 0;
+    align-items: center;
+    background: #313131;
+    border: 1px solid #0e0e0e;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    box-shadow: 0 0 8px rgba(0,0,0,0.25);
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: visible;
+    position: relative;
   }
 
-  #toolbar-bottom-content {
-    display: flex;
-    flex-direction: row;
-    align-items: stretch;
-    overflow-x: auto;
-    overflow-y: hidden;
-    width: 100%;
-  }
-
-  #toolbar-bottom-content .toolbar-group {
-    justify-content: center;
-    align-self: stretch;
-  }
-
-  #toolbar-bottom-content .toolbar-group:last-child { border-right: none; }
-  #toolbar-top::-webkit-scrollbar,
   #toolbar-bottom::-webkit-scrollbar { height: 3px; }
-  #toolbar-top::-webkit-scrollbar-track,
   #toolbar-bottom::-webkit-scrollbar-track { background: transparent; }
-  #toolbar-top::-webkit-scrollbar-thumb,
   #toolbar-bottom::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
 
-  #toolbar-top  { border-bottom: 1px solid rgba(255,255,255,0.08); }
-  #toolbar-bottom { border-top: 1px solid rgba(255,255,255,0.08); }
-
-  #toolbar-bottom[data-mode="draw"] .select-only { display: none; }
-  #toolbar-bottom[data-mode="select"] .draw-only { display: none; }
-  #toolbar-bottom[data-mode="erase"] .select-only { display: none; }
-  #toolbar-bottom[data-mode="erase"] .draw-only { display: none; }
-  body.erase-mode #field-wrapper { cursor: crosshair; }
-
-  .toolbar-group {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    padding: 12px 16px;
-    border-right: 1px solid rgba(255,255,255,0.1);
-    gap: 6px;
-    flex-shrink: 0;
-  }
-  .toolbar-group:last-child { border-right: none; }
-
-  .toolbar-logo {
-    padding: 0 18px;
-    border-right: 1px solid rgba(255,255,255,0.1);
-  }
-  .toolbar-logo-text {
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: #fdfdfd;
-    white-space: nowrap;
-  }
-
-  .toolbar-group .section-title { margin-bottom: 2px; }
-
-  .section {
-    padding: 10px 10px 6px;
-    border-bottom: 1px solid #333;
-  }
-
-  .section-title {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #888;
-    margin-bottom: 7px;
-  }
-
-  .btn {
+  .tb-btn {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    padding: 6px 10px;
-    border: 1px solid #333;
-    border-radius: 5px;
-    background: #2a2a2a;
-    color: #e0e0e0;
-    font-size: 12px;
+    gap: 8px;
+    padding: 0 20px;
+    height: 66px;
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 16px;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-    user-select: none;
-    gap: 4px;
-  }
-
-  .btn:hover { background: #383838; border-color: #555; }
-
-  .btn.active {
-    background: #444;
-    border-color: #e94560;
-    color: #fff;
-    box-shadow: 0 0 6px rgba(233, 69, 96, 0.4);
-  }
-
-  .btn-full { width: 100%; margin-bottom: 4px; }
-
-  .btn-mode { min-width: 80px; background: #1e1e1e; border-color: #2a2a2a; }
-  .btn-mode:hover { background: #282828; border-color: #444; }
-
-  .mode-row { display: flex; gap: 5px; }
-
-  .btn-team-a {
-    background: #1565C0;
-    border-color: #1976D2;
-    color: #fff;
-  }
-  .btn-team-a:hover { background: #1976D2; }
-  .btn-team-a.active { background: #0D47A1; border-color: #FFD700; box-shadow: 0 0 6px rgba(255,215,0,0.5); }
-
-  .btn-team-b {
-    background: #C62828;
-    border-color: #D32F2F;
-    color: #fff;
-  }
-  .btn-team-b:hover { background: #D32F2F; }
-  .btn-team-b.active { background: #B71C1C; border-color: #FFD700; box-shadow: 0 0 6px rgba(255,215,0,0.5); }
-
-  .btn-ref {
-    background: #111;
-    border-color: #fff;
-    color: #fff;
-    font-weight: 700;
-  }
-  .btn-ref:hover { opacity: 0.85; }
-  .btn-ref.active { border-color: #FFD700; box-shadow: 0 0 6px rgba(255,215,0,0.6); }
-
-  .btn-ball {
-    background: #8B4513;
-    border-color: #A0522D;
-    color: #fff;
-  }
-  .btn-ball:hover { background: #A0522D; }
-  .btn-ball.active { background: #6B3410; border-color: #FFD700; box-shadow: 0 0 6px rgba(255,215,0,0.5); }
-
-  .btn-danger {
-    background: #4a1010;
-    border-color: #7a1f1f;
-    color: #ff8080;
-  }
-  .btn-danger:hover { background: #6a1515; }
-
-  .btn-sm { padding: 4px 12px; font-size: 11px; height: 28px; }
-
-  .number-row {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    margin-bottom: 5px;
-  }
-
-  .number-row label {
-    font-size: 11px;
-    color: #aaa;
     white-space: nowrap;
+    transition: background 0.15s;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  .tb-btn:hover { background: rgba(255,255,255,0.08); }
+  .tb-btn.active { background: #484848; }
+  .tb-btn svg, .tb-btn img { width: 20px; height: 20px; flex-shrink: 0; }
+
+  .tb-divider {
+    width: 1px;
+    background: #0e0e0e;
+    align-self: stretch;
+    flex-shrink: 0;
   }
 
-  .number-input {
-    width: 55px;
-    background: #2a2a2a;
-    border: 1px solid #333;
-    border-radius: 4px;
-    color: #e0e0e0;
-    font-size: 12px;
-    padding: 3px 6px;
-    outline: none;
+  /* ── Sub-panels ────────────────────────────────────────── */
+  .subpanel {
+    position: absolute;
+    bottom: calc(100% + 16px);
+    left: 50%;
+    transform: translateX(-50%);
+    display: none;
+    flex-direction: row;
+    align-items: center;
+    background: #313131;
+    border: 1px solid #0e0e0e;
+    border-radius: 8px;
+    box-shadow: 0 0 8px rgba(0,0,0,0.25);
+    height: 56px;
+    padding: 0 8px;
+    white-space: nowrap;
+    z-index: 100;
   }
-  .number-input:focus { border-color: #333; }
 
-  .ref-grid {
-    display: grid;
-    grid-template-columns: repeat(4, auto);
-    grid-template-rows: repeat(2, auto);
-    grid-auto-flow: row;
+  .sp-btn {
+    display: inline-flex;
+    align-items: center;
     gap: 6px;
+    padding: 0 14px;
+    height: 40px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background 0.15s;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  .sp-btn:hover { background: rgba(255,255,255,0.07); }
+  .sp-btn.active { background: #484848; }
+
+  .sp-divider {
+    width: 1px;
+    background: #0e0e0e;
+    align-self: stretch;
+    flex-shrink: 0;
+    margin: 8px 4px;
   }
 
-  /* Drawing controls */
-  .swatch-row {
-    display: flex;
-    gap: 5px;
-    margin-bottom: 6px;
-    flex-wrap: wrap;
-  }
-
+  /* Color swatches in sub-panel */
   .swatch {
-    width: 28px;
-    height: 28px;
-    border-radius: 5px;
-    border: 1px solid #444;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid transparent;
     cursor: pointer;
     transition: border-color 0.15s, box-shadow 0.15s;
+    flex-shrink: 0;
   }
-  .swatch:hover { border-color: #555; }
+  .swatch:hover { border-color: rgba(255,255,255,0.4); }
   .swatch.active { border-color: #e94560; box-shadow: 0 0 6px rgba(233, 69, 96, 0.4); }
 
-  .width-row {
+  #swatch-row {
     display: flex;
-    gap: 5px;
-    margin-bottom: 6px;
     align-items: center;
+    gap: 8px;
+    padding: 0 8px;
   }
 
+  /* Width buttons in sub-panel */
   .width-btn {
-    flex: 1;
-    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    flex-shrink: 0;
   }
+  .width-btn:hover { background: rgba(255,255,255,0.07); }
+  .width-btn.active { background: #484848; border-color: #555; }
 
   .width-preview {
     background: #e0e0e0;
     border-radius: 50%;
   }
 
-  select.sidebar-select {
-    width: 100%;
-    background: #2a2a2a;
-    border: 1px solid #333;
-    border-radius: 4px;
-    color: #e0e0e0;
-    font-size: 12px;
-    padding: 5px 6px;
-    outline: none;
-    margin-bottom: 5px;
-    cursor: pointer;
+  #width-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
   }
-  select.sidebar-select:focus { border-color: #333; }
+
+  body.erase-mode #field-wrapper { cursor: crosshair; }
+
+
 
   /* ── Field area ───────────────────────────────────────── */
   #field-wrapper {
@@ -280,6 +274,8 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    padding-bottom: 32px;
+    padding-top: 16px
   }
 
   #field-img {
@@ -378,15 +374,6 @@
     box-shadow: 1px 1px 3px rgba(0,0,0,0.5);
   }
 
-  .btn-flag {
-    background: #7a6000;
-    border-color: #B8860B;
-    color: #FFD700;
-    font-weight: 700;
-  }
-  .btn-flag:hover { background: #9a7800; }
-  .btn-flag.active { background: #5a4400; border-color: #FFD700; box-shadow: 0 0 6px rgba(255,215,0,0.7); }
-
   /* Inline edit input on token */
   .token-edit-input {
     position: absolute;
@@ -414,26 +401,33 @@
   <!-- ── Top toolbar ──────────────────────────────────────────── -->
   <div id="toolbar-top">
 
-    <div class="toolbar-group toolbar-logo">
-      <span class="toolbar-logo-text">⚑ Ref Whiteboard</span>
+    <div class="toolbar-logo">
+      <img src="./media/logo.svg" alt="RefBoard" height="18">
     </div>
 
-    <div class="toolbar-group" style="margin-left:auto; border-left:1px solid rgba(255,255,255,0.1)">
-      <div class="section-title">Scenarios</div>
-      <div class="mode-row">
-        <button class="btn btn-sm" onclick="saveScenario()">⬇ Save Scenario</button>
-        <button class="btn btn-sm" onclick="loadScenarioClick()">⬆ Load Scenario</button>
-        <input type="file" id="load-file" accept=".json" style="display:none" onchange="loadScenarioFile(this)">
-      </div>
-    </div>
-
-    <div class="toolbar-group">
-      <div class="section-title">Actions</div>
-      <div class="mode-row">
-        <button class="btn btn-sm" onclick="undo()">↩ Undo</button>
-        <button class="btn btn-sm" onclick="redo()">↪ Redo</button>
-<button class="btn btn-danger btn-sm" onclick="resetEverything()">⟳ Reset</button>
-      </div>
+    <div id="toolbar-top-actions">
+      <button class="top-btn" onclick="loadScenarioClick()">
+        <img src="./media/icon-upload.svg" width="20" height="20" alt="">
+        Load Scenario
+      </button>
+      <input type="file" id="load-file" accept=".json" style="display:none" onchange="loadScenarioFile(this)">
+      <button class="top-btn" onclick="saveScenario()">
+        <img src="./media/icon-download.svg" width="20" height="20" alt="">
+        Save Scenario
+      </button>
+      <div class="top-divider"></div>
+      <button class="top-btn" onclick="undo()">
+        <img src="./media/icon-arrow-rotate-left.svg" width="20" height="20" alt="">
+        Undo
+      </button>
+      <button class="top-btn" onclick="redo()">
+        <img src="./media/icon-arrow-rotate-right.svg" width="20" height="20" alt="">
+        Redo
+      </button>
+      <button class="top-btn danger" onclick="resetEverything()">
+        <img src="./media/icon-trash-can.svg" width="20" height="20" alt="">
+        Reset
+      </button>
     </div>
 
   </div>
@@ -446,50 +440,62 @@
   </div>
 
   <!-- ── Bottom toolbar ───────────────────────────────────── -->
-  <div id="toolbar-bottom" data-mode="select">
+  <div id="toolbar-bottom-wrapper">
 
-    <div id="toolbar-bottom-content">
+    <!-- Select sub-panel: trace toggle -->
+    <div id="subpanel-select" class="subpanel">
+      <button class="sp-btn" id="btn-trace" onclick="toggleTraceMode()">Trace</button>
+    </div>
 
-      <div class="toolbar-group">
-        <div class="section-title">Mode</div>
-        <button class="btn btn-mode active" id="btn-select" onclick="setMode('select')">⬆ Select</button>
-        <button class="btn btn-mode" id="btn-draw" onclick="setMode('draw')">✏ Draw</button>
-        <button class="btn btn-mode" id="btn-erase" onclick="setMode('erase')">✕ Erase</button>
-      </div>
+    <!-- Official sub-panel: position type selector -->
+    <div id="subpanel-official" class="subpanel">
+      <div id="official-type-btns" style="display:flex;align-items:center;gap:2px;"></div>
+    </div>
 
-      <div class="toolbar-group select-only">
-        <div class="section-title">Teams</div>
-        <button class="btn btn-team-a placement-btn btn-sm" id="btn-place-a" onclick="activatePlacement('A')">Add Team A player</button>
-        <button class="btn btn-team-b placement-btn btn-sm" id="btn-place-b" onclick="activatePlacement('B')">Add Team B player</button>
-      </div>
+    <!-- Draw sub-panel: colour + weight -->
+    <div id="subpanel-draw" class="subpanel">
+      <div id="swatch-row"></div>
+      <div class="sp-divider"></div>
+      <div id="width-row"></div>
+    </div>
 
-      <div class="toolbar-group select-only">
-        <div class="section-title">Items</div>
-        <button class="btn btn-ball placement-btn btn-sm" id="btn-place-ball" onclick="activatePlacement('ball')">Move Ball</button>
-        <button class="btn btn-flag placement-btn btn-sm" id="btn-place-flag" onclick="activatePlacement('flag')">Place Flag</button>
-      </div>
-
-      <div class="toolbar-group select-only">
-        <div class="section-title">Officials</div>
-        <div class="ref-grid" id="ref-grid"></div>
-      </div>
-
-      <div class="toolbar-group select-only">
-        <div class="section-title">Trace</div>
-        <button class="btn btn-sm" id="btn-trace" onclick="toggleTraceMode()">✦ Trace</button>
-      </div>
-
-      <div class="toolbar-group draw-only">
-        <div class="section-title">Colour</div>
-        <div class="swatch-row" id="swatch-row" style="margin-bottom:0; flex-wrap:wrap; width:168px"></div>
-      </div>
-
-      <div class="toolbar-group draw-only">
-        <div class="section-title">Weight</div>
-        <div class="width-row" id="width-row" style="margin-bottom:0"></div>
-        <button class="btn btn-sm" onclick="clearDrawings()">⌫ Clear</button>
-      </div>
-
+    <!-- Main toolbar row -->
+    <div id="toolbar-bottom">
+      <button class="tb-btn active" id="btn-mode-select" onclick="setMode('select')">
+        <img src="./media/icon-arrow-pointer.svg" width="20" height="20" alt="">
+        Select
+      </button>
+      <div class="tb-divider"></div>
+      <button class="tb-btn" id="btn-mode-place-a" onclick="setMode('place-a')">
+        <img src="./media/icon-helmet-right.svg" width="20" height="20" alt="">
+        A Player
+      </button>
+      <button class="tb-btn" id="btn-mode-place-b" onclick="setMode('place-b')">
+        <img src="./media/icon-helmet-left.svg" width="20" height="20" alt="">
+        B Player
+      </button>
+      <button class="tb-btn" id="btn-mode-official" onclick="setMode('official')">
+        <img src="./media/icon-user.svg" width="20" height="20" alt="">
+        Official
+      </button>
+      <div class="tb-divider"></div>
+      <button class="tb-btn" id="btn-mode-flag" onclick="setMode('flag')">
+        <img src="./media/icon-flag.svg" width="20" height="20" alt="">
+        Flag
+      </button>
+      <button class="tb-btn" id="btn-mode-ball" onclick="setMode('ball')">
+        <img src="./media/icon-football.svg" width="20" height="20" alt="">
+        Ball
+      </button>
+      <div class="tb-divider"></div>
+      <button class="tb-btn" id="btn-mode-draw" onclick="setMode('draw')">
+        <img src="./media/icon-pen.svg" width="20" height="20" alt="">
+        Draw
+      </button>
+      <button class="tb-btn" id="btn-mode-erase" onclick="setMode('erase')">
+        <img src="./media/icon-eraser.svg" width="20" height="20" alt="">
+        Erase
+      </button>
     </div>
 
   </div>
@@ -501,7 +507,7 @@
 // ── State ──────────────────────────────────────────────────
 const state = {
   mode: 'select',
-  placementType: null,
+  officialType: 'R',
   tokens: [],
   strokes: [],
   history: [],
@@ -549,7 +555,7 @@ const DRAW_WIDTHS = [2, 5, 10];
 
 // ── Init ────────────────────────────────────────────────────
 function init() {
-  buildRefGrid();
+  buildOfficialSubpanel();
   buildSwatches();
   buildWidthBtns();
 
@@ -635,110 +641,51 @@ function traceColorFor(team) {
 }
 
 // ── Mode ────────────────────────────────────────────────────
+const PLACEMENT_MODES = new Set(['place-a', 'place-b', 'official', 'flag', 'ball']);
+
 function setMode(mode) {
   state.mode = mode;
-  state.placementType = null;
-  clearPlacementHighlight();
 
-  document.getElementById('btn-select').classList.toggle('active', mode === 'select');
-  document.getElementById('btn-draw').classList.toggle('active', mode === 'draw');
-  document.getElementById('btn-erase').classList.toggle('active', mode === 'erase');
-  document.getElementById('toolbar-bottom').dataset.mode = mode;
+  // Update toolbar button active states
+  document.querySelectorAll('.tb-btn').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.getElementById('btn-mode-' + mode);
+  if (activeBtn) activeBtn.classList.add('active');
 
-  if (mode === 'draw') {
+  // Show/hide sub-panels
+  document.getElementById('subpanel-select').style.display   = mode === 'select'   ? 'flex' : 'none';
+  document.getElementById('subpanel-official').style.display = mode === 'official' ? 'flex' : 'none';
+  document.getElementById('subpanel-draw').style.display     = mode === 'draw'     ? 'flex' : 'none';
+
+  // Canvas / token pointer-event routing
+  if (mode === 'draw' || mode === 'erase') {
     canvas.style.zIndex = '30';
     canvas.style.pointerEvents = 'auto';
     tokenLayer.style.pointerEvents = 'none';
-    document.body.classList.add('drawing-mode');
-    document.body.classList.remove('erase-mode');
-    document.body.classList.remove('placing');
-  } else if (mode === 'erase') {
-    canvas.style.zIndex = '30';
-    canvas.style.pointerEvents = 'auto';
-    tokenLayer.style.pointerEvents = 'none';
-    document.body.classList.remove('drawing-mode');
-    document.body.classList.add('erase-mode');
-    document.body.classList.remove('placing');
   } else {
     canvas.style.zIndex = '10';
     canvas.style.pointerEvents = 'none';
     tokenLayer.style.pointerEvents = 'auto';
-    document.body.classList.remove('drawing-mode');
-    document.body.classList.remove('erase-mode');
   }
+
+  // Body classes
+  document.body.classList.toggle('drawing-mode', mode === 'draw');
+  document.body.classList.toggle('erase-mode',   mode === 'erase');
+  document.body.classList.toggle('placing',       PLACEMENT_MODES.has(mode));
 }
 
-// ── Placement ──────────────────────────────────────────────
-function activatePlacement(type) {
-  if (state.mode !== 'select') setMode('select');
-
-  let label = '';
-  if (type === 'A' || type === 'B') label = '1';
-  else if (type === 'ball') label = '';
-  else if (type === 'flag') label = '';
-  else if (OFFICIALS.includes(type)) {
-    label = type;
-    type = 'ref';
-  }
-
-  const key = type === 'ball' ? 'ball' : type + (label ? ':' + label : '');
-
-  if (state.placementType && state.placementType._key === key) {
-    // Deselect
-    state.placementType = null;
-    clearPlacementHighlight();
-    document.body.classList.remove('placing');
-    return;
-  }
-
-  state.placementType = { team: type, label, _key: key };
-  clearPlacementHighlight();
-  highlightPlacementButton(type, label);
-  document.body.classList.add('placing');
-}
-
-function activateOfficialPlacement(officialLabel) {
-  if (state.mode !== 'select') setMode('select');
-
-  const type = 'ref';
-  const label = officialLabel;
-  const key = 'ref:' + label;
-
-  if (state.placementType && state.placementType._key === key) {
-    state.placementType = null;
-    clearPlacementHighlight();
-    document.body.classList.remove('placing');
-    return;
-  }
-
-  state.placementType = { team: type, label, _key: key };
-  clearPlacementHighlight();
-
-  // Highlight the specific ref button
-  document.querySelectorAll('.btn-ref').forEach(b => {
-    if (b.dataset.official === officialLabel) b.classList.add('active');
+// ── Official type selection ─────────────────────────────────
+function setOfficialType(type) {
+  state.officialType = type;
+  document.querySelectorAll('#official-type-btns .sp-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.official === type);
   });
-
-  document.body.classList.add('placing');
-}
-
-function clearPlacementHighlight() {
-  document.querySelectorAll('.placement-btn').forEach(b => b.classList.remove('active'));
-}
-
-function highlightPlacementButton(team, label) {
-  if (team === 'A') document.getElementById('btn-place-a').classList.add('active');
-  else if (team === 'B') document.getElementById('btn-place-b').classList.add('active');
-  else if (team === 'ball') document.getElementById('btn-place-ball').classList.add('active');
-  else if (team === 'flag') document.getElementById('btn-place-flag').classList.add('active');
 }
 
 // ── Field click (placement) ─────────────────────────────────
 function onFieldClick(e) {
-  if (!state.placementType) return;
+  if (!PLACEMENT_MODES.has(state.mode)) return;
   if (state.dragging) return;
   if (state.justDragged) { state.justDragged = false; return; }
-  if (state.mode === 'draw') return;
   if (e.target.classList.contains('token')) return;
 
   const { x, y, w, h } = state.field;
@@ -748,13 +695,11 @@ function onFieldClick(e) {
   const xFrac = Math.max(0, Math.min(1, xPx / w));
   const yFrac = Math.max(0, Math.min(1, yPx / h));
 
-  placeToken(xFrac, yFrac, state.placementType.team, state.placementType.label);
-
-  if (state.placementType.team === 'ref') {
-    state.placementType = null;
-    clearPlacementHighlight();
-    document.body.classList.remove('placing');
-  }
+  if (state.mode === 'place-a')    placeToken(xFrac, yFrac, 'A', '1');
+  else if (state.mode === 'place-b') placeToken(xFrac, yFrac, 'B', '1');
+  else if (state.mode === 'official') placeToken(xFrac, yFrac, 'ref', state.officialType);
+  else if (state.mode === 'flag')  placeToken(xFrac, yFrac, 'flag', '');
+  else if (state.mode === 'ball')  placeToken(xFrac, yFrac, 'ball', '');
 }
 
 // ── Place token ────────────────────────────────────────────
@@ -786,7 +731,6 @@ function placeToken(xFrac, yFrac, team, label) {
 function createTokenEl(token) {
   const el = document.createElement('div');
   el.className = 'token token-' + (token.team === 'ball' ? 'ball' : token.team === 'flag' ? 'flag' : token.team.toLowerCase());
-  el.classList.add('placement-btn');
   if (token.team === 'flag') {
     el.textContent = '⚑';
   } else if (token.team === 'ball') {
@@ -1158,16 +1102,16 @@ function clearDrawings() {
   redrawCanvas();
 }
 
-// ── Sidebar builders ────────────────────────────────────────
-function buildRefGrid() {
-  const grid = document.getElementById('ref-grid');
+// ── Sub-panel builders ──────────────────────────────────────
+function buildOfficialSubpanel() {
+  const container = document.getElementById('official-type-btns');
   OFFICIALS.forEach(off => {
     const btn = document.createElement('button');
-    btn.className = 'btn btn-ref btn-sm placement-btn';
+    btn.className = 'sp-btn' + (off === state.officialType ? ' active' : '');
     btn.textContent = off;
     btn.dataset.official = off;
-    btn.onclick = () => activateOfficialPlacement(off);
-    grid.appendChild(btn);
+    btn.onclick = () => setOfficialType(off);
+    container.appendChild(btn);
   });
 }
 
@@ -1192,7 +1136,7 @@ function buildWidthBtns() {
   const row = document.getElementById('width-row');
   DRAW_WIDTHS.forEach((w, i) => {
     const btn = document.createElement('button');
-    btn.className = 'btn width-btn' + (i === 1 ? ' active' : '');
+    btn.className = 'width-btn' + (i === 1 ? ' active' : '');
     btn.title = w + 'px';
 
     const preview = document.createElement('div');
