@@ -21,6 +21,9 @@
     flex-direction: column;
     width: 100vw;
     height: 100vh;
+    background-image: url('./grass-tile.png');
+    background-repeat: repeat;
+    background-size: 300px;
   }
 
   /* ── Toolbars ─────────────────────────────────────────── */
@@ -29,7 +32,9 @@
     display: flex;
     flex-direction: row;
     align-items: stretch;
-    background: #1e1e1e;
+    background: rgba(20, 20, 20, 0.72);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     width: 100%;
     flex-shrink: 0;
     overflow-x: auto;
@@ -54,22 +59,25 @@
   #toolbar-top::-webkit-scrollbar,
   #toolbar-bottom::-webkit-scrollbar { height: 3px; }
   #toolbar-top::-webkit-scrollbar-track,
-  #toolbar-bottom::-webkit-scrollbar-track { background: #1e1e1e; }
+  #toolbar-bottom::-webkit-scrollbar-track { background: transparent; }
   #toolbar-top::-webkit-scrollbar-thumb,
-  #toolbar-bottom::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  #toolbar-bottom::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
 
-  #toolbar-top  { border-bottom: 1px solid #333; }
-  #toolbar-bottom { border-top: 1px solid #333; }
+  #toolbar-top  { border-bottom: 1px solid rgba(255,255,255,0.08); }
+  #toolbar-bottom { border-top: 1px solid rgba(255,255,255,0.08); }
 
   #toolbar-bottom[data-mode="draw"] .select-only { display: none; }
   #toolbar-bottom[data-mode="select"] .draw-only { display: none; }
+  #toolbar-bottom[data-mode="erase"] .select-only { display: none; }
+  #toolbar-bottom[data-mode="erase"] .draw-only { display: none; }
+  body.erase-mode #field-wrapper { cursor: crosshair; }
 
   .toolbar-group {
     display: flex;
     flex-direction: column;
     justify-content: center;
     padding: 12px 16px;
-    border-right: 1px solid #333;
+    border-right: 1px solid rgba(255,255,255,0.1);
     gap: 6px;
     flex-shrink: 0;
   }
@@ -77,8 +85,7 @@
 
   .toolbar-logo {
     padding: 0 18px;
-    background: #2a2a2a;
-    border-right: 1px solid #1a1a1a;
+    border-right: 1px solid rgba(255,255,255,0.1);
   }
   .toolbar-logo-text {
     font-size: 13px;
@@ -273,9 +280,6 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    background-image: url('./grass-tile.png');
-    background-repeat: repeat;
-    background-size: 300px;
   }
 
   #field-img {
@@ -414,7 +418,7 @@
       <span class="toolbar-logo-text">⚑ Ref Whiteboard</span>
     </div>
 
-    <div class="toolbar-group" style="margin-left:auto; border-left:1px solid #333">
+    <div class="toolbar-group" style="margin-left:auto; border-left:1px solid rgba(255,255,255,0.1)">
       <div class="section-title">Scenarios</div>
       <div class="mode-row">
         <button class="btn btn-sm" onclick="saveScenario()">⬇ Save Scenario</button>
@@ -446,10 +450,11 @@
 
     <div id="toolbar-bottom-content">
 
-      <div class="toolbar-group" style="background:#2a2a2a;">
+      <div class="toolbar-group">
         <div class="section-title">Mode</div>
         <button class="btn btn-mode active" id="btn-select" onclick="setMode('select')">⬆ Select</button>
         <button class="btn btn-mode" id="btn-draw" onclick="setMode('draw')">✏ Draw</button>
+        <button class="btn btn-mode" id="btn-erase" onclick="setMode('erase')">✕ Erase</button>
       </div>
 
       <div class="toolbar-group select-only">
@@ -503,6 +508,7 @@ const state = {
   future: [],
   currentStroke: null,
   drawing: false,
+  erasing: false,
   dragging: null,
   traceMode: false,
   traces: [],
@@ -636,6 +642,7 @@ function setMode(mode) {
 
   document.getElementById('btn-select').classList.toggle('active', mode === 'select');
   document.getElementById('btn-draw').classList.toggle('active', mode === 'draw');
+  document.getElementById('btn-erase').classList.toggle('active', mode === 'erase');
   document.getElementById('toolbar-bottom').dataset.mode = mode;
 
   if (mode === 'draw') {
@@ -643,18 +650,27 @@ function setMode(mode) {
     canvas.style.pointerEvents = 'auto';
     tokenLayer.style.pointerEvents = 'none';
     document.body.classList.add('drawing-mode');
+    document.body.classList.remove('erase-mode');
+    document.body.classList.remove('placing');
+  } else if (mode === 'erase') {
+    canvas.style.zIndex = '30';
+    canvas.style.pointerEvents = 'auto';
+    tokenLayer.style.pointerEvents = 'none';
+    document.body.classList.remove('drawing-mode');
+    document.body.classList.add('erase-mode');
     document.body.classList.remove('placing');
   } else {
     canvas.style.zIndex = '10';
     canvas.style.pointerEvents = 'none';
     tokenLayer.style.pointerEvents = 'auto';
     document.body.classList.remove('drawing-mode');
+    document.body.classList.remove('erase-mode');
   }
 }
 
 // ── Placement ──────────────────────────────────────────────
 function activatePlacement(type) {
-  if (state.mode === 'draw') setMode('select');
+  if (state.mode !== 'select') setMode('select');
 
   let label = '';
   if (type === 'A' || type === 'B') label = '1';
@@ -682,7 +698,7 @@ function activatePlacement(type) {
 }
 
 function activateOfficialPlacement(officialLabel) {
-  if (state.mode === 'draw') setMode('select');
+  if (state.mode !== 'select') setMode('select');
 
   const type = 'ref';
   const label = officialLabel;
@@ -936,6 +952,12 @@ function onPenActivity() {
 function getCtx() { return canvas.getContext('2d'); }
 
 function onCanvasPointerDown(e) {
+  if (state.mode === 'erase') {
+    state.erasing = true;
+    canvas.setPointerCapture(e.pointerId);
+    eraseAt(canvasPt(e));
+    return;
+  }
   if (state.mode !== 'draw') return;
   if (e.pointerType === 'pen') onPenActivity();
   // Palm rejection: if pen is active, ignore finger touches
@@ -956,6 +978,7 @@ function onCanvasPointerDown(e) {
 }
 
 function onCanvasPointerMove(e) {
+  if (state.mode === 'erase' && state.erasing) { eraseAt(canvasPt(e)); return; }
   if (!state.drawing || !state.currentStroke) return;
   if (e.pointerType === 'pen') onPenActivity();
   if (state.penDetected && e.pointerType === 'touch') return;
@@ -972,10 +995,12 @@ function onCanvasPointerMove(e) {
 }
 
 function onCanvasPointerUp(e) {
+  state.erasing = false;
   commitStroke();
 }
 
 function onCanvasPointerLeave(e) {
+  state.erasing = false;
   if (state.drawing) commitStroke();
 }
 
@@ -996,6 +1021,38 @@ function canvasPt(e) {
     xFrac: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
     yFrac: Math.max(0, Math.min(1, (e.clientY - rect.top)  / rect.height)),
   };
+}
+
+function eraseAt(pt) {
+  const { w, h } = state.field;
+  const px = pt.xFrac * w;
+  const py = pt.yFrac * h;
+
+  // Tokens first (hit radius 24px)
+  for (let i = state.tokens.length - 1; i >= 0; i--) {
+    const tok = state.tokens[i];
+    if (Math.hypot(px - tok.xFrac * w, py - tok.yFrac * h) < 24) {
+      state.history.push({ type: 'remove', token: tok });
+      state.future = [];
+      removeToken(tok);
+      return;
+    }
+  }
+
+  // Strokes
+  for (let i = state.strokes.length - 1; i >= 0; i--) {
+    const stroke = state.strokes[i];
+    const hit = Math.max(10, stroke.width / 2 + 4);
+    for (const p of stroke.points) {
+      if (Math.hypot(px - p.xFrac * w, py - p.yFrac * h) <= hit) {
+        state.strokes.splice(i, 1);
+        state.history.push({ type: 'erase-stroke', stroke });
+        state.future = [];
+        redrawCanvas();
+        return;
+      }
+    }
+  }
 }
 
 function redrawCanvas() {
@@ -1054,6 +1111,9 @@ function undo() {
   } else if (entry.type === 'stroke') {
     state.strokes.pop();
     redrawCanvas();
+  } else if (entry.type === 'erase-stroke') {
+    state.strokes.push(entry.stroke);
+    redrawCanvas();
   } else if (entry.type === 'remove') {
     state.tokens.push(entry.token);
     tokenLayer.appendChild(entry.token.el);
@@ -1082,6 +1142,10 @@ function redo() {
     repositionToken(entry.placedToken);
   } else if (entry.type === 'stroke') {
     state.strokes.push(entry.stroke);
+    redrawCanvas();
+  } else if (entry.type === 'erase-stroke') {
+    const idx = state.strokes.indexOf(entry.stroke);
+    if (idx !== -1) state.strokes.splice(idx, 1);
     redrawCanvas();
   } else if (entry.type === 'remove') {
     removeToken(entry.token);
