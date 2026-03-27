@@ -79,7 +79,7 @@
     border-radius: 0 0 0 8px;
     box-shadow: 0 0 8px rgba(0,0,0,0.25);
     margin-left: auto;
-    padding: 0 8px;
+    padding: 0;
     overflow-x: auto;
     overflow-y: hidden;
   }
@@ -181,9 +181,9 @@
     border-radius: 8px;
     box-shadow: 0 0 8px rgba(0,0,0,0.25);
     height: 48px;
-    padding: 0 8px;
     white-space: nowrap;
     z-index: 100;
+    overflow: hidden;
   }
 
   .sp-btn {
@@ -266,7 +266,6 @@
     background: #0e0e0e;
     align-self: stretch;
     flex-shrink: 0;
-    margin: 8px 4px;
   }
 
   /* Color swatches in sub-panel */
@@ -286,7 +285,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 0 8px;
+    padding: 0 12px;
   }
 
   /* Width buttons in sub-panel */
@@ -295,10 +294,9 @@
     align-items: center;
     justify-content: center;
     width: 40px;
-    height: 40px;
+    height: 48px;
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: 6px;
+    border: 0px solid transparent;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
     flex-shrink: 0;
@@ -306,12 +304,10 @@
   .width-btn:hover { background: rgba(255,255,255,0.07); }
   .width-btn.active { background: #484848; border-color: #555; }
 
-
   #width-row {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 0 8px;
+    gap: 0;
   }
 
   body.erase-mode #field-wrapper { cursor: crosshair; }
@@ -610,15 +606,15 @@ const OFFICIALS = ['R', 'U', 'D', 'L', 'B', 'S', 'F', 'C'];
 // ── Drawing colours & widths ───────────────────────────────
 const DRAW_COLORS = [
   { color: '#ffffff', label: 'White' },
-  { color: '#222222', label: 'Black' },
-  { color: '#FFD700', label: 'Yellow' },
-  { color: '#2196F3', label: 'Blue' },
   { color: '#F44336', label: 'Red' },
   { color: '#FF6B00', label: 'Orange' },
+  { color: '#FFD700', label: 'Yellow' },
   { color: '#4CAF50', label: 'Green' },
-  { color: '#9C27B0', label: 'Purple' },
   { color: '#00BCD4', label: 'Cyan' },
+  { color: '#2196F3', label: 'Blue' },
+  { color: '#9C27B0', label: 'Purple' },
   { color: '#E040FB', label: 'Magenta' },
+  { color: '#222222', label: 'Black' },
 ];
 const DRAW_WIDTHS = [2, 5, 10];
 
