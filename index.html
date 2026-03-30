@@ -1170,6 +1170,21 @@ function eraseAt(pt) {
       }
     }
   }
+
+  // Traces
+  for (let i = state.traces.length - 1; i >= 0; i--) {
+    const trace = state.traces[i];
+    const hit = Math.max(10, trace.width / 2 + 4);
+    for (const p of trace.points) {
+      if (Math.hypot(px - p.xFrac * w, py - p.yFrac * h) <= hit) {
+        state.traces.splice(i, 1);
+        state.history.push({ type: 'erase-trace', trace });
+        state.future = [];
+        redrawCanvas();
+        return;
+      }
+    }
+  }
 }
 
 function redrawCanvas() {
@@ -1231,6 +1246,9 @@ function undo() {
   } else if (entry.type === 'erase-stroke') {
     state.strokes.push(entry.stroke);
     redrawCanvas();
+  } else if (entry.type === 'erase-trace') {
+    state.traces.push(entry.trace);
+    redrawCanvas();
   } else if (entry.type === 'remove') {
     state.tokens.push(entry.token);
     tokenLayer.appendChild(entry.token.el);
@@ -1264,6 +1282,10 @@ function redo() {
   } else if (entry.type === 'erase-stroke') {
     const idx = state.strokes.indexOf(entry.stroke);
     if (idx !== -1) state.strokes.splice(idx, 1);
+    redrawCanvas();
+  } else if (entry.type === 'erase-trace') {
+    const idx = state.traces.indexOf(entry.trace);
+    if (idx !== -1) state.traces.splice(idx, 1);
     redrawCanvas();
   } else if (entry.type === 'remove') {
     removeToken(entry.token);
