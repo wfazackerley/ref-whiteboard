@@ -378,6 +378,11 @@
     z-index: 50 !important;
   }
 
+  .token-selected {
+    box-shadow: 0 0 0 3px rgba(255,215,0,1.0);
+    z-index: 50 !important;
+  }
+
   .token.dragging {
     cursor: grabbing;
     box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 0 3px rgba(255,215,0,0.8);
@@ -593,11 +598,11 @@ const state = {
   field: { x: 0, y: 0, w: 0, h: 0 },
   penDetected: false,
   penDetectedTimer: null,
+  selectedToken: null,
 };
 
 let _resizeTimer = null;
 let _nextId = 1;
-let lastTap = { time: 0, token: null };
 const MAX_FUTURE = 20;
 
 // ── DOM refs ───────────────────────────────────────────────
@@ -663,6 +668,7 @@ function init() {
 
   // Field click (for placement)
   fieldWrapper.addEventListener('click', onFieldClick);
+  fieldWrapper.addEventListener('pointerdown', () => deselectToken());
 
   // Global pointer events for drag
   document.addEventListener('pointermove',   onDocPointerMove);
@@ -733,6 +739,7 @@ function traceColorFor(team) {
 const PLACEMENT_MODES = new Set(['place-a', 'place-b', 'official', 'flag', 'ball']);
 
 function setMode(mode) {
+  deselectToken();
   state.mode = mode;
 
   // Update toolbar button active states
@@ -884,20 +891,6 @@ function createTokenEl(token) {
     if (e.button !== 0) return;
     if (e.pointerType === 'pen' && e.pressure === 0) return;
     e.stopPropagation();
-
-    if (e.pointerType !== 'mouse') {
-      const now = Date.now();
-      if (now - lastTap.time < 350 && lastTap.token === token) {
-        lastTap = { time: 0, token: null };
-        e.preventDefault();
-        if (token.team !== 'ref' && token.team !== 'ball') {
-          editTokenLabel(token);
-        }
-        return;
-      }
-      lastTap = { time: now, token };
-    }
-
     el.setPointerCapture(e.pointerId);
     beginDrag(e, token);
   });
@@ -932,10 +925,22 @@ function repositionAllTokens() {
 }
 
 function removeToken(token) {
+  if (state.selectedToken === token) deselectToken();
   token.el.remove();
   const idx = state.tokens.indexOf(token);
   if (idx !== -1) state.tokens.splice(idx, 1);
   updatePlayerCounts();
+}
+
+function selectToken(token) {
+  state.selectedToken = token;
+  token.el.classList.add('token-selected');
+}
+
+function deselectToken() {
+  if (!state.selectedToken) return;
+  state.selectedToken.el.classList.remove('token-selected');
+  state.selectedToken = null;
 }
 
 // ── Inline label editing ────────────────────────────────────
@@ -983,6 +988,7 @@ function beginDrag(e, token) {
     startPointerY: e.clientY,
     startXFrac: token.xFrac,
     startYFrac: token.yFrac,
+    pointerType: e.pointerType,
   };
   token.el.classList.add('dragging');
   document.body.style.cursor = 'grabbing';
@@ -1024,7 +1030,7 @@ function onDocPointerMove(e) {
 
 function onDocPointerUp(e) {
   if (!state.dragging) return;
-  const { token, startXFrac, startYFrac } = state.dragging;
+  const { token, startXFrac, startYFrac, pointerType } = state.dragging;
   const moved = token.xFrac !== startXFrac || token.yFrac !== startYFrac;
   if (moved) {
     state.history.push({
@@ -1040,6 +1046,16 @@ function onDocPointerUp(e) {
   state.currentTrace = null;
   state.justDragged = true;
   document.body.style.cursor = '';
+
+  if (!moved && pointerType !== 'mouse') {
+    if (state.selectedToken === token) {
+      deselectToken();
+      if (token.team !== 'ref' && token.team !== 'ball') editTokenLabel(token);
+    } else {
+      deselectToken();
+      selectToken(token);
+    }
+  }
 }
 
 // ── Pen detection ───────────────────────────────────────────
@@ -1369,6 +1385,7 @@ function loadScenarioFile(input) {
 
 // ── Clear / Reset ───────────────────────────────────────────
 function clearAllTokens() {
+  deselectToken();
   [...state.tokens].forEach(t => t.el.remove());
   state.tokens = [];
   updatePlayerCounts();
