@@ -40,6 +40,10 @@ All logic is in `index.html`. The code is organized into these sections:
 - `fonts/` — Circular Std font files (woff)
 - `grass-tile.png` — background texture
 
+## Tool usage
+
+Prefer direct tool calls (Read, Glob, Grep) over subagents for codebase exploration. This is a single-file project — use direct tools.
+
 ## Key functions (approximate line numbers)
 
 | Function | Purpose |
