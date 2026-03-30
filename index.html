@@ -222,19 +222,20 @@
     background: #faca0b;
   }
 
-  #subpanel-select { display: flex; padding: 0 12px; }
+  #subpanel-select { display: flex; padding: 0; }
   #subpanel-place-a,
   #subpanel-place-b { gap: 8px; padding: 0 12px; font-size: 16px; color: #fff; }
   .player-count-value { font-weight: 900; }
 
-  .trace-toggle {
+  .toggle-control {
     display: flex;
     align-items: center;
     gap: 12px;
+    padding: 0 16px;
     cursor: pointer;
     user-select: none;
   }
-  .trace-track {
+  .toggle-track {
     width: 40px;
     height: 24px;
     border-radius: 6px;
@@ -245,7 +246,7 @@
     flex-shrink: 0;
     transition: background-color 0.2s ease;
   }
-  .trace-knob {
+  .toggle-knob {
     width: 16px;
     height: 16px;
     border-radius: 2px;
@@ -253,12 +254,12 @@
     transform: translateX(0);
     transition: transform 0.2s ease, background-color 0.2s ease;
   }
-  .trace-track.on { background: #faca0b; }
-  .trace-track.on .trace-knob {
+  .toggle-track.on { background: #faca0b; }
+  .toggle-track.on .toggle-knob {
     transform: translateX(16px);
     background: #3d3d3d;
   }
-  .trace-label {
+  .toggle-label {
     font-size: 15px;
     color: #fff;
   }
@@ -585,13 +586,20 @@
   <!-- ── Bottom toolbar ───────────────────────────────────── -->
   <div id="toolbar-bottom-wrapper">
 
-    <!-- Select sub-panel: trace toggle -->
+    <!-- Select sub-panel: trace + snap toggles -->
     <div id="subpanel-select" class="subpanel">
-      <div class="trace-toggle" onclick="toggleTraceMode()">
-        <div class="trace-track" id="trace-track">
-          <div class="trace-knob"></div>
+      <div class="toggle-control" onclick="toggleTraceMode()">
+        <div class="toggle-track" id="trace-toggle">
+          <div class="toggle-knob"></div>
         </div>
-        <span class="trace-label">Trace Movement</span>
+        <span class="toggle-label">Trace Movement</span>
+      </div>
+      <div class="sp-divider"></div>
+      <div class="toggle-control" onclick="toggleSnap()">
+        <div class="toggle-track on" id="snap-toggle">
+          <div class="toggle-knob"></div>
+        </div>
+        <span class="toggle-label">Snap to Grid</span>
       </div>
     </div>
 
@@ -685,6 +693,8 @@ const state = {
   penDetectedTimer: null,
   selectedToken: null,
   lastTap: null,   // { token, time } — for double-tap detection on touch/pen
+  snapEnabled: true,
+  snapResolution: 1,  // yards
 };
 
 let _resizeTimer = null;
@@ -717,6 +727,16 @@ const DRAW_WIDTHS = [2, 5, 10];
 // 10 CSS px = 20 physical px on a 2× retina iPad — absorbs pencil-tip jitter on contact
 // without impeding intentional drags.
 const DRAG_THRESHOLD = 10;
+
+// ── Snap configuration ──────────────────────────────────────
+const SNAP_CONFIG = {
+  fieldLeft:        72   / 4464,  // xFrac of left end line
+  fieldRight:       4392 / 4464,  // xFrac of right end line
+  fieldTop:         144  / 2352,  // yFrac of top sideline
+  fieldBottom:      2208 / 2352,  // yFrac of bottom sideline
+  fieldLengthYards: 120,          // end line to end line (incl. both end zones)
+  fieldWidthYards:  56,           // sideline to sideline — even number gives exact centre line at 28 yards
+};
 
 // ── Init ────────────────────────────────────────────────────
 function init() {
@@ -799,6 +819,42 @@ function measureField() {
   redrawCanvas();
 }
 
+// ── Snap to grid ────────────────────────────────────────────
+function snapFrac(xFrac, yFrac, token, dragDeltaX) {
+  const { fieldLeft, fieldRight, fieldTop, fieldBottom, fieldLengthYards, fieldWidthYards } = SNAP_CONFIG;
+  const res = state.snapResolution;
+
+  // X snap
+  let snappedX;
+  if (token.team === 'ball' && dragDeltaX !== 0) {
+    // Snap the leading edge to the nearest yard line, then back-calculate the
+    // centre position. This keeps the pointer at the ball's centre while the
+    // appropriate edge (nose when moving right, tail when moving left) sits on
+    // the line.
+    const halfBallFrac = 15 / state.field.w;
+    const sign = dragDeltaX > 0 ? 1 : -1;
+    const edgeFrac  = xFrac + sign * halfBallFrac;
+    const edgeYards = (edgeFrac - fieldLeft) / (fieldRight - fieldLeft) * fieldLengthYards;
+    const snappedEdgeYards = Math.round(edgeYards / res) * res;
+    const snappedEdgeFrac  = fieldLeft + (snappedEdgeYards / fieldLengthYards) * (fieldRight - fieldLeft);
+    snappedX = snappedEdgeFrac - sign * halfBallFrac;
+  } else {
+    const xYards = (xFrac - fieldLeft) / (fieldRight - fieldLeft) * fieldLengthYards;
+    snappedX = fieldLeft + (Math.round(xYards / res) * res / fieldLengthYards) * (fieldRight - fieldLeft);
+  }
+
+  // Y snap (centre for all tokens)
+  const yYards  = (yFrac - fieldTop) / (fieldBottom - fieldTop) * fieldWidthYards;
+  const snappedY = fieldTop + (Math.round(yYards / res) * res / fieldWidthYards) * (fieldBottom - fieldTop);
+
+  return { xFrac: snappedX, yFrac: snappedY };
+}
+
+function toggleSnap() {
+  state.snapEnabled = !state.snapEnabled;
+  document.getElementById('snap-toggle').classList.toggle('on', state.snapEnabled);
+}
+
 // ── Overlays ───────────────────────────────────────────────
 function resizeOverlays() {
   const { x, y, w, h } = state.field;
@@ -822,7 +878,7 @@ function updatePlayerCounts() {
 // ── Trace mode ──────────────────────────────────────────────
 function toggleTraceMode() {
   state.traceMode = !state.traceMode;
-  document.getElementById('trace-track').classList.toggle('on', state.traceMode);
+  document.getElementById('trace-toggle').classList.toggle('on', state.traceMode);
 }
 
 function traceColorFor(team) {
@@ -916,8 +972,14 @@ function onFieldClick(e) {
   const wRect = fieldWrapper.getBoundingClientRect();
   const xPx = e.clientX - wRect.left - x;
   const yPx = e.clientY - wRect.top  - y;
-  const xFrac = Math.max(0, Math.min(1, xPx / w));
-  const yFrac = Math.max(0, Math.min(1, yPx / h));
+  let xFrac = Math.max(0, Math.min(1, xPx / w));
+  let yFrac = Math.max(0, Math.min(1, yPx / h));
+  if (state.snapEnabled) {
+    const team = state.mode === 'ball' ? 'ball' : 'player';
+    const snapped = snapFrac(xFrac, yFrac, { team }, 0);
+    xFrac = snapped.xFrac;
+    yFrac = snapped.yFrac;
+  }
 
   if (state.mode === 'place-a')    placeToken(xFrac, yFrac, 'A', '1');
   else if (state.mode === 'place-b') placeToken(xFrac, yFrac, 'B', '1');
@@ -1201,6 +1263,8 @@ function beginDrag(e, token) {
     startYFrac: token.yFrac,
     pointerType: e.pointerType,
     hasMoved: false,
+    lastPointerX: e.clientX,
+    lastSnapDirX: 0,
   };
   token.el.classList.add('dragging');
   document.body.style.cursor = 'grabbing';
@@ -1231,6 +1295,14 @@ function onDocPointerMove(e) {
   const { w, h } = state.field;
   token.xFrac = Math.max(0, Math.min(1, startXFrac + dx / w));
   token.yFrac = Math.max(0, Math.min(1, startYFrac + dy / h));
+  const instantDx = e.clientX - state.dragging.lastPointerX;
+  state.dragging.lastPointerX = e.clientX;
+  if (state.snapEnabled) {
+    if (instantDx !== 0) state.dragging.lastSnapDirX = instantDx;
+    const snapped = snapFrac(token.xFrac, token.yFrac, token, state.dragging.lastSnapDirX);
+    token.xFrac = snapped.xFrac;
+    token.yFrac = snapped.yFrac;
+  }
   repositionToken(token);
 
   if (state.currentTrace) {
