@@ -325,7 +325,11 @@
     justify-content: center;
     overflow: hidden;
     padding-bottom: 32px;
-    padding-top: 16px
+    padding-top: 16px;
+    /* Disables double-tap-to-zoom, which removes the 300ms click delay iOS
+       imposes while it waits to see if a second tap is coming. Without this,
+       rapid token placement via Apple Pencil or touch is gated at ~3 taps/sec. */
+    touch-action: manipulation;
   }
 
   #field-img {
@@ -373,11 +377,6 @@
     touch-action: none;
   }
 
-  .token:hover {
-    box-shadow: 0 0 0 3px rgba(255,215,0,0.6);
-    z-index: 50 !important;
-  }
-
   .token-selected {
     box-shadow: 0 0 0 3px rgba(255,215,0,1.0);
     z-index: 50 !important;
@@ -413,9 +412,6 @@
     width: 30px;
     height: 21px;
   }
-  .token-ball:hover {
-    box-shadow: 0 0 0 3px rgba(255,215,0,0.6) !important;
-  }
   .token-ball svg {
     width: 100%;
     height: 100%;
@@ -431,6 +427,95 @@
     border-radius: 3px;
     box-shadow: 1px 1px 3px rgba(0,0,0,0.5);
   }
+
+  /* Edit badge on selected token */
+  .token-edit-badge {
+    display: none;
+    position: absolute;
+    top: -20px;
+    right: -20px;
+    left: auto;
+    transform: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #FFD700;
+    color: #000;
+    font-size: 15px;
+    line-height: 1;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: none;
+    z-index: 60;
+    pointer-events: auto;
+    touch-action: none;
+    padding: 0;
+  }
+  .token-selected .token-edit-badge {
+    display: flex;
+  }
+
+  /* Numeric keypad overlay */
+  #keypad-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    background: transparent;
+    touch-action: none;
+  }
+  #number-keypad {
+    position: fixed;
+    z-index: 901;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 14px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+    touch-action: none;
+  }
+  .keypad-display {
+    background: #111;
+    color: #FFD700;
+    font-size: 26px;
+    font-weight: 900;
+    text-align: center;
+    padding: 6px 8px;
+    border-radius: 8px;
+    min-width: 60px;
+    letter-spacing: 2px;
+  }
+  .keypad-display.keypad-display-placeholder {
+    opacity: 0.45;
+  }
+  .keypad-row {
+    display: flex;
+    gap: 8px;
+  }
+  .keypad-btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 10px;
+    background: #3a3a3a;
+    color: #fff;
+    border: 1px solid #555;
+    font-size: 22px;
+    font-weight: 700;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    touch-action: none;
+    padding: 0;
+  }
+  .keypad-btn:active { background: #555; }
+  .keypad-confirm { background: #2e7d32 !important; border-color: #388e3c !important; }
+  .keypad-confirm:active { background: #1b5e20 !important; }
+  .keypad-del { font-size: 16px; }
 
   /* Inline edit input on token */
   .token-edit-input {
@@ -599,6 +684,7 @@ const state = {
   penDetected: false,
   penDetectedTimer: null,
   selectedToken: null,
+  lastTap: null,   // { token, time } — for double-tap detection on touch/pen
 };
 
 let _resizeTimer = null;
@@ -628,9 +714,21 @@ const DRAW_COLORS = [
   { color: '#222222', label: 'Black' },
 ];
 const DRAW_WIDTHS = [2, 5, 10];
+// 10 CSS px = 20 physical px on a 2× retina iPad — absorbs pencil-tip jitter on contact
+// without impeding intentional drags.
+const DRAG_THRESHOLD = 10;
 
 // ── Init ────────────────────────────────────────────────────
 function init() {
+  // Block Apple Pencil hover events (pen in range but not touching).
+  // The Pencil emits pointermove with buttons === 0 whenever it is near the
+  // screen before contact. Letting these through would trigger drag logic and
+  // palm-rejection state incorrectly. capture:true intercepts each event before
+  // any other handler sees it.
+  document.addEventListener('pointermove', e => {
+    if (e.pointerType === 'pen' && e.buttons === 0) e.stopImmediatePropagation();
+  }, { capture: true });
+
   buildOfficialSubpanel();
   buildSwatches();
   buildWidthBtns();
@@ -884,13 +982,25 @@ function createTokenEl(token) {
   } else {
     el.textContent = token.label;
   }
+
+  // Edit badge (player tokens only — shown when selected, for Pencil users).
+  // Uses pointerdown rather than click so the keypad opens immediately on
+  // contact. A click listener would add a ~300ms delay on iOS while the browser
+  // waits to rule out a double-tap.
+  if (token.team === 'A' || token.team === 'B') {
+    const badge = document.createElement('button');
+    badge.className = 'token-edit-badge';
+    badge.textContent = '✎';
+    badge.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); openNumberKeypad(token); });
+    el.appendChild(badge);
+  }
+
   el.dataset.id = token.id;
 
   // Drag start (with manual double-tap detection for Apple Pencil on iOS Safari)
   el.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    if (e.pointerType === 'pen' && e.pressure === 0) return;
     el.setPointerCapture(e.pointerId);
     beginDrag(e, token);
   });
@@ -941,6 +1051,14 @@ function deselectToken() {
   if (!state.selectedToken) return;
   state.selectedToken.el.classList.remove('token-selected');
   state.selectedToken = null;
+  closeNumberKeypad();
+}
+
+// Update the text node of a token element without destroying child elements (e.g. edit badge).
+function setTokenLabelText(token) {
+  for (const node of token.el.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) { node.textContent = token.label; return; }
+  }
 }
 
 // ── Inline label editing ────────────────────────────────────
@@ -965,7 +1083,7 @@ function editTokenLabel(token) {
     if (isNaN(val)) val = 0;
     val = Math.max(0, Math.min(99, val));
     token.label = String(val);
-    token.el.textContent = token.label;
+    setTokenLabelText(token);
     input.remove();
   }
 
@@ -974,6 +1092,99 @@ function editTokenLabel(token) {
     if (e.key === 'Escape') { input.remove(); }
   });
   input.addEventListener('blur', commit);
+}
+
+// ── Number keypad (Pencil-friendly) ────────────────────────
+function openNumberKeypad(token) {
+  closeNumberKeypad();
+
+  let value = '';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'keypad-overlay';
+  overlay.addEventListener('pointerdown', closeNumberKeypad);
+
+  const keypad = document.createElement('div');
+  keypad.id = 'number-keypad';
+  keypad.addEventListener('pointerdown', e => e.stopPropagation());
+
+  const display = document.createElement('div');
+  display.className = 'keypad-display keypad-display-placeholder';
+  display.textContent = token.label;
+  keypad.appendChild(display);
+
+  function refreshDisplay() {
+    if (value === '') {
+      display.textContent = token.label;
+      display.classList.add('keypad-display-placeholder');
+    } else {
+      display.textContent = value;
+      display.classList.remove('keypad-display-placeholder');
+    }
+  }
+
+  function makeBtn(text, onClick, extraClass) {
+    const btn = document.createElement('button');
+    btn.className = 'keypad-btn' + (extraClass ? ' ' + extraClass : '');
+    btn.textContent = text;
+    // Action on pointerdown, not click, for immediate response.
+    //
+    // iOS synthesises a click event after each pen contact and then opens a
+    // ~270ms double-tap detection window during which it silently drops the next
+    // physical tap. At normal tapping speed this halves the effective input rate.
+    // Calling preventDefault() on touchstart tells iOS not to synthesise the
+    // click, which collapses the detection window and allows every tap through.
+    // (Apple Pencil fires touchstart immediately after pointerdown on iPadOS.)
+    btn.addEventListener('touchstart', e => { e.preventDefault(); });
+    btn.addEventListener('pointerdown', e => { e.stopPropagation(); onClick(); });
+    return btn;
+  }
+
+  [['7','8','9'], ['4','5','6'], ['1','2','3']].forEach(row => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'keypad-row';
+    row.forEach(d => rowEl.appendChild(makeBtn(d, () => {
+      if (value.length < 2) { value += d; refreshDisplay(); }
+    })));
+    keypad.appendChild(rowEl);
+  });
+
+  const lastRow = document.createElement('div');
+  lastRow.className = 'keypad-row';
+  lastRow.appendChild(makeBtn('⌫', () => { value = value.slice(0, -1); refreshDisplay(); }, 'keypad-del'));
+  lastRow.appendChild(makeBtn('0', () => {
+    if (value.length < 2) { value += '0'; refreshDisplay(); }
+  }));
+  lastRow.appendChild(makeBtn('✓', () => {
+    if (value !== '') {
+      let v = Math.max(0, Math.min(99, parseInt(value, 10)));
+      token.label = String(v);
+      setTokenLabelText(token);
+    }
+    closeNumberKeypad();
+  }, 'keypad-confirm'));
+  keypad.appendChild(lastRow);
+
+  document.body.appendChild(overlay);
+  document.body.appendChild(keypad);
+
+  // Position keypad near the token, within viewport
+  const tokenRect = token.el.getBoundingClientRect();
+  const kw = 204; // approx rendered width
+  const kh = 308; // approx rendered height
+  const margin = 10;
+  let left = tokenRect.left + tokenRect.width / 2 - kw / 2;
+  let top  = tokenRect.bottom + margin;
+  if (top + kh > window.innerHeight - margin) top = tokenRect.top - kh - margin;
+  left = Math.max(margin, Math.min(window.innerWidth  - kw - margin, left));
+  top  = Math.max(margin, Math.min(window.innerHeight - kh - margin, top));
+  keypad.style.left = left + 'px';
+  keypad.style.top  = top  + 'px';
+}
+
+function closeNumberKeypad() {
+  document.getElementById('keypad-overlay')?.remove();
+  document.getElementById('number-keypad')?.remove();
 }
 
 // ── Dragging ───────────────────────────────────────────────
@@ -989,26 +1200,35 @@ function beginDrag(e, token) {
     startXFrac: token.xFrac,
     startYFrac: token.yFrac,
     pointerType: e.pointerType,
+    hasMoved: false,
   };
   token.el.classList.add('dragging');
   document.body.style.cursor = 'grabbing';
-
-  if (state.traceMode) {
-    state.currentTrace = {
-      color: traceColorFor(token.team),
-      width: 4,
-      points: [{ xFrac: token.xFrac, yFrac: token.yFrac }],
-    };
-    state.traces.push(state.currentTrace);
-  }
+  // Trace is started lazily in onDocPointerMove once DRAG_THRESHOLD is crossed.
 }
 
 function onDocPointerMove(e) {
   if (!state.dragging) return;
   const { token, startPointerX, startPointerY, startXFrac, startYFrac } = state.dragging;
-  const { w, h } = state.field;
   const dx = e.clientX - startPointerX;
   const dy = e.clientY - startPointerY;
+
+  // Hold off committing to a drag until the pointer has moved past the threshold.
+  // This prevents a pencil tap (which can land with slight jitter) from dragging the token.
+  if (!state.dragging.hasMoved) {
+    if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+    state.dragging.hasMoved = true;
+    if (state.traceMode) {
+      state.currentTrace = {
+        color: traceColorFor(token.team),
+        width: 4,
+        points: [{ xFrac: startXFrac, yFrac: startYFrac }],
+      };
+      state.traces.push(state.currentTrace);
+    }
+  }
+
+  const { w, h } = state.field;
   token.xFrac = Math.max(0, Math.min(1, startXFrac + dx / w));
   token.yFrac = Math.max(0, Math.min(1, startYFrac + dy / h));
   repositionToken(token);
@@ -1030,8 +1250,8 @@ function onDocPointerMove(e) {
 
 function onDocPointerUp(e) {
   if (!state.dragging) return;
-  const { token, startXFrac, startYFrac, pointerType } = state.dragging;
-  const moved = token.xFrac !== startXFrac || token.yFrac !== startYFrac;
+  const { token, startXFrac, startYFrac, pointerType, hasMoved } = state.dragging;
+  const moved = hasMoved;
   if (moved) {
     state.history.push({
       type: 'move', token,
@@ -1048,13 +1268,8 @@ function onDocPointerUp(e) {
   document.body.style.cursor = '';
 
   if (!moved && pointerType !== 'mouse') {
-    if (state.selectedToken === token) {
-      deselectToken();
-      if (token.team !== 'ref' && token.team !== 'ball') editTokenLabel(token);
-    } else {
-      deselectToken();
-      selectToken(token);
-    }
+    deselectToken();
+    selectToken(token);
   }
 }
 
