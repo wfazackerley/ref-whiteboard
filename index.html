@@ -887,6 +887,7 @@ function createTokenEl(token) {
       const now = Date.now();
       if (now - lastTap.time < 350 && lastTap.token === token) {
         lastTap = { time: 0, token: null };
+        e.preventDefault();
         if (token.team !== 'ref' && token.team !== 'ball') {
           editTokenLabel(token);
         }
