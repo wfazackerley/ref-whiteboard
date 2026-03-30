@@ -32,6 +32,7 @@
     color: #e0e0e0;
     overflow: hidden;
     height: 100vh;
+    height: 100dvh;
     width: 100vw;
   }
 
@@ -40,6 +41,7 @@
     flex-direction: column;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
     background-image: url('./grass-tile.png');
     background-repeat: repeat;
     background-size: 300px;
@@ -406,6 +408,9 @@
     width: 30px;
     height: 21px;
   }
+  .token-ball:hover {
+    box-shadow: 0 0 0 3px rgba(255,215,0,0.6) !important;
+  }
   .token-ball svg {
     width: 100%;
     height: 100%;
@@ -592,6 +597,7 @@ const state = {
 
 let _resizeTimer = null;
 let _nextId = 1;
+let lastTap = { time: 0, token: null };
 const MAX_FUTURE = 20;
 
 // ── DOM refs ───────────────────────────────────────────────
@@ -872,10 +878,23 @@ function createTokenEl(token) {
   }
   el.dataset.id = token.id;
 
-  // Drag start
+  // Drag start (with manual double-tap detection for Apple Pencil on iOS Safari)
   el.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;
     e.stopPropagation();
+
+    if (e.pointerType !== 'mouse') {
+      const now = Date.now();
+      if (now - lastTap.time < 350 && lastTap.token === token) {
+        lastTap = { time: 0, token: null };
+        if (token.team !== 'ref' && token.team !== 'ball') {
+          editTokenLabel(token);
+        }
+        return;
+      }
+      lastTap = { time: now, token };
+    }
+
     el.setPointerCapture(e.pointerId);
     beginDrag(e, token);
   });
