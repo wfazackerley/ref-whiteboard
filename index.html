@@ -665,8 +665,9 @@ function init() {
   fieldWrapper.addEventListener('click', onFieldClick);
 
   // Global pointer events for drag
-  document.addEventListener('pointermove', onDocPointerMove);
-  document.addEventListener('pointerup',   onDocPointerUp);
+  document.addEventListener('pointermove',   onDocPointerMove);
+  document.addEventListener('pointerup',     onDocPointerUp);
+  document.addEventListener('pointercancel', onDocPointerUp);
 
   // Undo shortcut
   document.addEventListener('keydown', e => {
@@ -881,6 +882,7 @@ function createTokenEl(token) {
   // Drag start (with manual double-tap detection for Apple Pencil on iOS Safari)
   el.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;
+    if (e.pointerType === 'pen' && e.pressure === 0) return;
     e.stopPropagation();
 
     if (e.pointerType !== 'mouse') {
