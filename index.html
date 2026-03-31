@@ -61,6 +61,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 40px;
     padding: 0 24px;
     flex-shrink: 0;
     background: #313131;
@@ -74,7 +75,6 @@
   #env-switcher {
     display: flex;
     align-items: center;
-    padding: 0 16px;
     flex-shrink: 0;
   }
 
@@ -83,9 +83,8 @@
     font-size: 15px;
     color: #fff;
     background: #484848;
-    border: 1px solid #0e0e0e;
+    border: none;
     border-radius: 6px;
-    padding: 6px 10px;
     cursor: pointer;
     outline: none;
   }
@@ -577,13 +576,12 @@
 
     <div class="toolbar-logo">
       <img src="./media/logo.svg" alt="RefBoard" height="18">
-    </div>
-
-    <div id="env-switcher">
-      <select id="env-select" onchange="switchEnvironment(this.value)">
-        <option value="ifaf">IFAF 11v11</option>
-        <option value="flag">Flag</option>
-      </select>
+      <div id="env-switcher">
+        <select id="env-select" onchange="switchEnvironment(this.value)">
+          <option value="ifaf">IFAF 11v11</option>
+          <option value="flag">Flag</option>
+        </select>
+      </div>
     </div>
 
     <div id="toolbar-top-actions">
@@ -591,7 +589,7 @@
         <div class="toggle-track on" id="snap-toggle">
           <div class="toggle-knob"></div>
         </div>
-        <span class="toggle-label" id="snap-label">Snap to Yards</span>
+        <span class="toggle-label" id="snap-label">Snap to Grid</span>
       </div>
       <div class="top-divider"></div>
       <button class="top-btn" onclick="loadScenarioClick()">
@@ -810,7 +808,6 @@ function init() {
   buildOfficialSubpanel();
   buildSwatches();
   buildWidthBtns();
-  updateSnapLabel();
 
   // Image load
   if (fieldImg.complete && fieldImg.naturalWidth > 0) {
@@ -914,11 +911,6 @@ function toggleSnap() {
   document.getElementById('snap-toggle').classList.toggle('on', state.snapEnabled);
 }
 
-function updateSnapLabel() {
-  const res = ENVIRONMENTS[state.environment].snapResolution;
-  document.getElementById('snap-label').textContent = res === 1 ? 'Snap to Yards' : `Snap to ${res} Yards`;
-}
-
 function switchEnvironment(envKey) {
   if (envKey === state.environment) return;
   if (!confirm('Switch environment? This will clear all tokens and drawings.')) {
@@ -927,7 +919,6 @@ function switchEnvironment(envKey) {
   }
   state.environment = envKey;
   state.snapResolution = ENVIRONMENTS[envKey].snapResolution;
-  updateSnapLabel();
   fieldImg.src = ENVIRONMENTS[envKey].fieldSrc;
   // fieldImg 'load' event in init() handles measureField + loadScenarioData + history clear
 }
