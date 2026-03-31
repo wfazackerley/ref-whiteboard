@@ -561,6 +561,13 @@
     </div>
 
     <div id="toolbar-top-actions">
+      <div class="toggle-control" onclick="toggleSnap()">
+        <div class="toggle-track on" id="snap-toggle">
+          <div class="toggle-knob"></div>
+        </div>
+        <span class="toggle-label">Snap to Grid</span>
+      </div>
+      <div class="top-divider"></div>
       <button class="top-btn" onclick="loadScenarioClick()">
         <img src="./media/icon-upload.svg" width="20" height="20" alt="">
         Load Scenario
@@ -604,13 +611,6 @@
           <div class="toggle-knob"></div>
         </div>
         <span class="toggle-label">Trace Movement</span>
-      </div>
-      <div class="sp-divider"></div>
-      <div class="toggle-control" onclick="toggleSnap()">
-        <div class="toggle-track on" id="snap-toggle">
-          <div class="toggle-knob"></div>
-        </div>
-        <span class="toggle-label">Snap to Grid</span>
       </div>
     </div>
 
@@ -1333,6 +1333,8 @@ function onDocPointerMove(e) {
   const { w, h } = state.field;
   token.xFrac = Math.max(0, Math.min(1, startXFrac + dx / w));
   token.yFrac = Math.max(0, Math.min(1, startYFrac + dy / h));
+  const rawXFrac = token.xFrac;
+  const rawYFrac = token.yFrac;
   const instantDx = e.clientX - state.dragging.lastPointerX;
   state.dragging.lastPointerX = e.clientX;
   if (token.team === 'ltg') {
@@ -1352,7 +1354,8 @@ function onDocPointerMove(e) {
 
   if (state.currentTrace) {
     const prev = state.currentTrace.points[state.currentTrace.points.length - 1];
-    state.currentTrace.points.push({ xFrac: token.xFrac, yFrac: token.yFrac });
+    // Record raw (unsnapped) position so the trace follows pointer movement smoothly.
+    state.currentTrace.points.push({ xFrac: rawXFrac, yFrac: rawYFrac });
     const ctx = getCtx();
     ctx.strokeStyle = state.currentTrace.color;
     ctx.lineWidth   = state.currentTrace.width;
@@ -1360,7 +1363,7 @@ function onDocPointerMove(e) {
     ctx.lineJoin    = 'round';
     ctx.beginPath();
     ctx.moveTo(prev.xFrac * canvas.width, prev.yFrac * canvas.height);
-    ctx.lineTo(token.xFrac * canvas.width, token.yFrac * canvas.height);
+    ctx.lineTo(rawXFrac * canvas.width, rawYFrac * canvas.height);
     ctx.stroke();
   }
 }
@@ -1370,6 +1373,17 @@ function onDocPointerUp(e) {
   const { token, startXFrac, startYFrac, pointerType, hasMoved } = state.dragging;
   const moved = hasMoved;
   if (moved) {
+    // Close the trace at the final snapped position so it ends where the token lands.
+    if (state.currentTrace) {
+      const pts = state.currentTrace.points;
+      const prev = pts[pts.length - 1];
+      const finalX = token.xFrac;
+      const finalY = token.yFrac;
+      if (prev.xFrac !== finalX || prev.yFrac !== finalY) {
+        pts.push({ xFrac: finalX, yFrac: finalY });
+        redrawCanvas();
+      }
+    }
     state.history.push({
       type: 'move', token,
       oldXFrac: startXFrac, oldYFrac: startYFrac,
