@@ -86,7 +86,6 @@
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    outline: none;
   }
 
   #toolbar-top-actions {
@@ -390,6 +389,7 @@
     font-size: 11px;
     font-weight: 700;
     user-select: none;
+    -webkit-user-select: none;
     cursor: grab;
     border: 2px solid rgba(255,255,255,0.3);
     transition: box-shadow 0.1s;
@@ -913,14 +913,11 @@ function toggleSnap() {
 
 function switchEnvironment(envKey) {
   if (envKey === state.environment) return;
-  if (!confirm('Switch environment? This will clear all tokens and drawings.')) {
-    document.getElementById('env-select').value = state.environment;
-    return;
-  }
   state.environment = envKey;
   state.snapResolution = ENVIRONMENTS[envKey].snapResolution;
   fieldImg.src = ENVIRONMENTS[envKey].fieldSrc;
   // fieldImg 'load' event in init() handles measureField + loadScenarioData + history clear
+  document.getElementById('env-select').blur();
 }
 
 // ── Overlays ───────────────────────────────────────────────
@@ -1143,11 +1140,15 @@ function createTokenEl(token) {
 
   el.dataset.id = token.id;
 
+  // Suppress iOS text selection / tap-highlight which fires at touchstart, before pointerdown.
+  el.addEventListener('touchstart', e => { e.preventDefault(); }, { passive: false });
+
   // Drag start (with manual double-tap detection for Apple Pencil on iOS Safari)
   el.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;
+    e.preventDefault();
     e.stopPropagation();
-    el.setPointerCapture(e.pointerId);
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
     beginDrag(e, token);
   });
 
