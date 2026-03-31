@@ -71,6 +71,25 @@
     box-shadow: 0 0 8px rgba(0,0,0,0.25);
   }
 
+  #env-switcher {
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    flex-shrink: 0;
+  }
+
+  #env-select {
+    font-family: inherit;
+    font-size: 15px;
+    color: #fff;
+    background: #484848;
+    border: 1px solid #0e0e0e;
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+    outline: none;
+  }
+
   #toolbar-top-actions {
     display: flex;
     align-items: stretch;
@@ -560,12 +579,19 @@
       <img src="./media/logo.svg" alt="RefBoard" height="18">
     </div>
 
+    <div id="env-switcher">
+      <select id="env-select" onchange="switchEnvironment(this.value)">
+        <option value="ifaf">IFAF 11v11</option>
+        <option value="flag">Flag</option>
+      </select>
+    </div>
+
     <div id="toolbar-top-actions">
       <div class="toggle-control" onclick="toggleSnap()">
         <div class="toggle-track on" id="snap-toggle">
           <div class="toggle-knob"></div>
         </div>
-        <span class="toggle-label">Snap to Yards</span>
+        <span class="toggle-label" id="snap-label">Snap to Yards</span>
       </div>
       <div class="top-divider"></div>
       <button class="top-btn" onclick="loadScenarioClick()">
@@ -710,6 +736,7 @@ const state = {
   lastTap: null,   // { token, time } — for double-tap detection on touch/pen
   snapEnabled: true,
   snapResolution: 1,  // yards
+  environment: 'ifaf',
 };
 
 let _resizeTimer = null;
@@ -743,14 +770,30 @@ const DRAW_WIDTHS = [2, 5, 10];
 // without impeding intentional drags.
 const DRAG_THRESHOLD = 10;
 
-// ── Snap configuration ──────────────────────────────────────
-const SNAP_CONFIG = {
-  fieldLeft:        72   / 4464,  // xFrac of left end line
-  fieldRight:       4392 / 4464,  // xFrac of right end line
-  fieldTop:         144  / 2352,  // yFrac of top sideline
-  fieldBottom:      2208 / 2352,  // yFrac of bottom sideline
-  fieldLengthYards: 120,          // end line to end line (incl. both end zones)
-  fieldWidthYards:  56,           // sideline to sideline — even number gives exact centre line at 28 yards
+// ── Environment configuration ────────────────────────────────
+const ENVIRONMENTS = {
+  ifaf: {
+    label:            'IFAF 11v11',
+    fieldSrc:         './field-ifaf.svg',
+    fieldLeft:        72   / 4464,  // xFrac of left end line
+    fieldRight:       4392 / 4464,  // xFrac of right end line
+    fieldTop:         144  / 2352,  // yFrac of top sideline
+    fieldBottom:      2208 / 2352,  // yFrac of bottom sideline
+    fieldLengthYards: 120,          // end line to end line (incl. both end zones)
+    fieldWidthYards:  56,           // sideline to sideline
+    snapResolution:   1,            // yards
+  },
+  flag: {
+    label:            'Flag',
+    fieldSrc:         './field-flag.svg',
+    fieldLeft:        5  / 80,
+    fieldRight:       75 / 80,
+    fieldTop:         10 / 40,
+    fieldBottom:      35 / 40,
+    fieldLengthYards: 70,
+    fieldWidthYards:  25,
+    snapResolution:   0.5,
+  },
 };
 
 // ── Init ────────────────────────────────────────────────────
@@ -767,19 +810,20 @@ function init() {
   buildOfficialSubpanel();
   buildSwatches();
   buildWidthBtns();
+  updateSnapLabel();
 
   // Image load
   if (fieldImg.complete && fieldImg.naturalWidth > 0) {
     requestAnimationFrame(() => {
       measureField();
-      loadScenarioData(DEFAULT_SCENARIO);
+      loadScenarioData(DEFAULT_SCENARIOS[state.environment]);
       state.history = [];
       state.future = [];
     });
   }
   fieldImg.addEventListener('load', () => requestAnimationFrame(() => {
     measureField();
-    loadScenarioData(DEFAULT_SCENARIO);
+    loadScenarioData(DEFAULT_SCENARIOS[state.environment]);
     state.history = [];
     state.future = [];
   }));
@@ -836,7 +880,7 @@ function measureField() {
 
 // ── Snap to grid ────────────────────────────────────────────
 function snapFrac(xFrac, yFrac, token, dragDeltaX) {
-  const { fieldLeft, fieldRight, fieldTop, fieldBottom, fieldLengthYards, fieldWidthYards } = SNAP_CONFIG;
+  const { fieldLeft, fieldRight, fieldTop, fieldBottom, fieldLengthYards, fieldWidthYards } = ENVIRONMENTS[state.environment];
   const res = state.snapResolution;
 
   // X snap
@@ -868,6 +912,24 @@ function snapFrac(xFrac, yFrac, token, dragDeltaX) {
 function toggleSnap() {
   state.snapEnabled = !state.snapEnabled;
   document.getElementById('snap-toggle').classList.toggle('on', state.snapEnabled);
+}
+
+function updateSnapLabel() {
+  const res = ENVIRONMENTS[state.environment].snapResolution;
+  document.getElementById('snap-label').textContent = res === 1 ? 'Snap to Yards' : `Snap to ${res} Yards`;
+}
+
+function switchEnvironment(envKey) {
+  if (envKey === state.environment) return;
+  if (!confirm('Switch environment? This will clear all tokens and drawings.')) {
+    document.getElementById('env-select').value = state.environment;
+    return;
+  }
+  state.environment = envKey;
+  state.snapResolution = ENVIRONMENTS[envKey].snapResolution;
+  updateSnapLabel();
+  fieldImg.src = ENVIRONMENTS[envKey].fieldSrc;
+  // fieldImg 'load' event in init() handles measureField + loadScenarioData + history clear
 }
 
 // ── Overlays ───────────────────────────────────────────────
@@ -1003,7 +1065,7 @@ function onFieldClick(e) {
   else if (state.mode === 'ball')  placeToken(xFrac, yFrac, 'ball', '');
   else if (state.mode === 'ltg') {
     if (state.snapEnabled) {
-      const { fieldLeft, fieldRight, fieldLengthYards } = SNAP_CONFIG;
+      const { fieldLeft, fieldRight, fieldLengthYards } = ENVIRONMENTS[state.environment];
       const xYards = (xFrac - fieldLeft) / (fieldRight - fieldLeft) * fieldLengthYards;
       xFrac = fieldLeft + (Math.round(xYards) / fieldLengthYards) * (fieldRight - fieldLeft);
     }
@@ -1120,7 +1182,7 @@ function createTokenEl(token) {
 function repositionToken(token) {
   const { w, h } = state.field;
   if (token.team === 'ltg') {
-    const { fieldTop, fieldBottom } = SNAP_CONFIG;
+    const { fieldTop, fieldBottom } = ENVIRONMENTS[state.environment];
     token.el.style.left   = (token.xFrac * w) + 'px';
     token.el.style.top    = (fieldTop * h) + 'px';
     token.el.style.height = ((fieldBottom - fieldTop) * h) + 'px';
@@ -1339,7 +1401,7 @@ function onDocPointerMove(e) {
   state.dragging.lastPointerX = e.clientX;
   if (token.team === 'ltg') {
     if (state.snapEnabled) {
-      const { fieldLeft, fieldRight, fieldLengthYards } = SNAP_CONFIG;
+      const { fieldLeft, fieldRight, fieldLengthYards } = ENVIRONMENTS[state.environment];
       const xYards = (token.xFrac - fieldLeft) / (fieldRight - fieldLeft) * fieldLengthYards;
       token.xFrac = fieldLeft + (Math.round(xYards) / fieldLengthYards) * (fieldRight - fieldLeft);
     }
@@ -1771,8 +1833,10 @@ function resetEverything() {
 }
 
 
-// ── Default scenario ─────────────────────────────────────────
-const DEFAULT_SCENARIO = {"tokens":[{"team":"ball","label":"","xFrac":0.3788,"yFrac":0.4969},{"team":"A","label":"54","xFrac":0.3626,"yFrac":0.4969},{"team":"A","label":"64","xFrac":0.3623,"yFrac":0.4639},{"team":"A","label":"74","xFrac":0.3618,"yFrac":0.4309},{"team":"A","label":"66","xFrac":0.3626,"yFrac":0.5278},{"team":"A","label":"76","xFrac":0.3626,"yFrac":0.5623},{"team":"A","label":"86","xFrac":0.3535,"yFrac":0.5978},{"team":"A","label":"8","xFrac":0.338,"yFrac":0.4957},{"team":"A","label":"24","xFrac":0.3337,"yFrac":0.5418},{"team":"A","label":"14","xFrac":0.3613,"yFrac":0.7516},{"team":"A","label":"16","xFrac":0.3464,"yFrac":0.3075},{"team":"A","label":"18","xFrac":0.36,"yFrac":0.2386},{"team":"B","label":"53","xFrac":0.3937,"yFrac":0.4477},{"team":"B","label":"55","xFrac":0.3937,"yFrac":0.4957},{"team":"B","label":"57","xFrac":0.3931,"yFrac":0.5461},{"team":"B","label":"43","xFrac":0.4142,"yFrac":0.4076},{"team":"B","label":"45","xFrac":0.4164,"yFrac":0.4637},{"team":"B","label":"47","xFrac":0.4171,"yFrac":0.5234},{"team":"B","label":"49","xFrac":0.4154,"yFrac":0.5881},{"team":"B","label":"23","xFrac":0.3983,"yFrac":0.7491},{"team":"B","label":"25","xFrac":0.4268,"yFrac":0.3014},{"team":"B","label":"27","xFrac":0.4054,"yFrac":0.2362},{"team":"B","label":"34","xFrac":0.4797,"yFrac":0.5626},{"team":"ref","label":"R","xFrac":0.2764,"yFrac":0.5634},{"team":"ref","label":"U","xFrac":0.4384,"yFrac":0.4779},{"team":"ref","label":"D","xFrac":0.3782,"yFrac":0.0763},{"team":"ref","label":"L","xFrac":0.3788,"yFrac":0.9238},{"team":"ref","label":"B","xFrac":0.5797,"yFrac":0.5203},{"team":"ref","label":"S","xFrac":0.5557,"yFrac":0.075},{"team":"ref","label":"F","xFrac":0.5564,"yFrac":0.925},{"team":"ref","label":"C","xFrac":0.2745,"yFrac":0.4293}],"strokes":[]};
+// ── Default scenarios ─────────────────────────────────────────
+const DEFAULT_SCENARIO_IFAF = {"tokens":[{"team":"ball","label":"","xFrac":0.3788,"yFrac":0.4969},{"team":"A","label":"54","xFrac":0.3626,"yFrac":0.4969},{"team":"A","label":"64","xFrac":0.3623,"yFrac":0.4639},{"team":"A","label":"74","xFrac":0.3618,"yFrac":0.4309},{"team":"A","label":"66","xFrac":0.3626,"yFrac":0.5278},{"team":"A","label":"76","xFrac":0.3626,"yFrac":0.5623},{"team":"A","label":"86","xFrac":0.3535,"yFrac":0.5978},{"team":"A","label":"8","xFrac":0.338,"yFrac":0.4957},{"team":"A","label":"24","xFrac":0.3337,"yFrac":0.5418},{"team":"A","label":"14","xFrac":0.3613,"yFrac":0.7516},{"team":"A","label":"16","xFrac":0.3464,"yFrac":0.3075},{"team":"A","label":"18","xFrac":0.36,"yFrac":0.2386},{"team":"B","label":"53","xFrac":0.3937,"yFrac":0.4477},{"team":"B","label":"55","xFrac":0.3937,"yFrac":0.4957},{"team":"B","label":"57","xFrac":0.3931,"yFrac":0.5461},{"team":"B","label":"43","xFrac":0.4142,"yFrac":0.4076},{"team":"B","label":"45","xFrac":0.4164,"yFrac":0.4637},{"team":"B","label":"47","xFrac":0.4171,"yFrac":0.5234},{"team":"B","label":"49","xFrac":0.4154,"yFrac":0.5881},{"team":"B","label":"23","xFrac":0.3983,"yFrac":0.7491},{"team":"B","label":"25","xFrac":0.4268,"yFrac":0.3014},{"team":"B","label":"27","xFrac":0.4054,"yFrac":0.2362},{"team":"B","label":"34","xFrac":0.4797,"yFrac":0.5626},{"team":"ref","label":"R","xFrac":0.2764,"yFrac":0.5634},{"team":"ref","label":"U","xFrac":0.4384,"yFrac":0.4779},{"team":"ref","label":"D","xFrac":0.3782,"yFrac":0.0763},{"team":"ref","label":"L","xFrac":0.3788,"yFrac":0.9238},{"team":"ref","label":"B","xFrac":0.5797,"yFrac":0.5203},{"team":"ref","label":"S","xFrac":0.5557,"yFrac":0.075},{"team":"ref","label":"F","xFrac":0.5564,"yFrac":0.925},{"team":"ref","label":"C","xFrac":0.2745,"yFrac":0.4293}],"strokes":[]};
+const DEFAULT_SCENARIO_FLAG = {"tokens":[{"team":"A","label":"12","xFrac":0.2313,"yFrac":0.4125},{"team":"A","label":"50","xFrac":0.2313,"yFrac":0.5625},{"team":"A","label":"10","xFrac":0.2313,"yFrac":0.7125},{"team":"A","label":"20","xFrac":0.175,"yFrac":0.5625},{"team":"ball","label":"","xFrac":0.2408,"yFrac":0.5625},{"team":"A","label":"8","xFrac":0.2062,"yFrac":0.5625},{"team":"B","label":"45","xFrac":0.2875,"yFrac":0.5625},{"team":"B","label":"87","xFrac":0.35,"yFrac":0.625},{"team":"B","label":"17","xFrac":0.3125,"yFrac":0.4125},{"team":"B","label":"33","xFrac":0.4,"yFrac":0.5625},{"team":"B","label":"15","xFrac":0.3125,"yFrac":0.7125},{"team":"ref","label":"R","xFrac":0.1875,"yFrac":0.9125},{"team":"ref","label":"D","xFrac":0.25,"yFrac":0.2125},{"team":"ref","label":"F","xFrac":0.3375,"yFrac":0.9125},{"team":"ref","label":"S","xFrac":0.5,"yFrac":0.2125}],"strokes":[]};
+const DEFAULT_SCENARIOS = { ifaf: DEFAULT_SCENARIO_IFAF, flag: DEFAULT_SCENARIO_FLAG };
 
 // ── Boot ────────────────────────────────────────────────────
 init();
