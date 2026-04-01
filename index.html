@@ -120,6 +120,7 @@
     white-space: nowrap;
     transition: background 0.15s;
     flex-shrink: 0;
+    text-decoration: none;
   }
   .top-btn:hover { background: rgba(255,255,255,0.07); }
   .top-btn.danger { color: #ff7878; }
@@ -140,6 +141,26 @@
     align-items: flex-end;
     flex-shrink: 0;
   }
+
+  #app-version {
+    position: absolute;
+    left: 12px;
+    bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    color: rgba(255,255,255,0.25);
+    user-select: none;
+  }
+  #app-version a {
+    color: rgba(255,255,255,0.25);
+    text-decoration: none;
+    pointer-events: all;
+  }
+  #app-version a:hover { color: rgba(255,255,255,0.5); }
 
   #toolbar-bottom {
     display: flex;
@@ -431,6 +452,7 @@
     box-shadow: none !important;
     width: 30px;
     height: 21px;
+    z-index: 3;
   }
   .token-ball svg {
     width: 100%;
@@ -449,13 +471,23 @@
   }
 
   .token-ltg {
-    background: rgba(255, 140, 0, 0.85);
+    background: transparent;
     border: none !important;
     border-radius: 0;
     box-shadow: none !important;
-    width: 4px;
+    width: 20px; /* wider hitbox — visual line stays 4px via ::before */
     transform: translateX(-50%);
     z-index: 1;
+  }
+  .token-ltg::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 100%;
+    background: rgba(255, 140, 0, 0.85);
+    pointer-events: none;
   }
 
   /* Edit badge on selected token */
@@ -565,6 +597,35 @@
     padding: 0;
   }
 
+  /* ── Ko-Fi donate button ───────────────────────────────── */
+#kofi-donate {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 16px;
+    height: 40px;
+    background: #313131;
+    border: 1px solid #0e0e0e;
+    border-radius: 8px;
+    box-shadow: 0 0 8px rgba(0,0,0,0.25);
+    color: #e0e0e0;
+    font-family: 'Circular Std', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 16px;
+    font-weight: 400;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s;
+    z-index: 9999;
+    user-select: none;
+  }
+  #kofi-donate:hover { background: #484848; }
+  @media (max-width: 1100px) {
+    #kofi-donate { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -578,7 +639,7 @@
       <img src="./media/logo.svg" alt="RefBoard" height="18">
       <div id="env-switcher">
         <select id="env-select" onchange="switchEnvironment(this.value)">
-          <option value="ifaf">IFAF 11v11</option>
+          <option value="ifaf">NCAA/IFAF Full Contact</option>
           <option value="flag">Flag</option>
         </select>
       </div>
@@ -614,6 +675,11 @@
         <img src="./media/icon-trash-can.svg" width="20" height="20" alt="">
         Reset
       </button>
+      <div class="top-divider"></div>
+      <button class="top-btn" data-tally-open="XxY06j" data-tally-layout="modal" data-tally-width="500">
+        <img src="./media/icon-feedback.svg" width="20" height="20" alt="">
+        Feedback
+      </button>
     </div>
 
   </div>
@@ -627,6 +693,7 @@
 
   <!-- ── Bottom toolbar ───────────────────────────────────── -->
   <div id="toolbar-bottom-wrapper">
+    <span id="app-version">vBETA<a href="./privacy.html" target="_blank" rel="noopener">Privacy Policy</a></span>
 
     <!-- Select sub-panel: trace + snap toggles -->
     <div id="subpanel-select" class="subpanel">
@@ -1833,5 +1900,9 @@ const DEFAULT_SCENARIOS = { ifaf: DEFAULT_SCENARIO_IFAF, flag: DEFAULT_SCENARIO_
 // ── Boot ────────────────────────────────────────────────────
 init();
 </script>
+<a id="kofi-donate" href="https://ko-fi.com/wfazackerley" target="_blank" rel="noopener">
+  Donate
+</a>
+<script async src="https://tally.so/widgets/embed.js"></script>
 </body>
 </html>
