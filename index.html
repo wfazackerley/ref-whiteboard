@@ -120,6 +120,7 @@
     white-space: nowrap;
     transition: background 0.15s;
     flex-shrink: 0;
+    text-decoration: none;
   }
   .top-btn:hover { background: rgba(255,255,255,0.07); }
   .top-btn.danger { color: #ff7878; }
@@ -145,13 +146,21 @@
     position: absolute;
     left: 12px;
     bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
     font-size: 12px;
     font-weight: 400;
     letter-spacing: 0.04em;
     color: rgba(255,255,255,0.25);
-    pointer-events: none;
     user-select: none;
   }
+  #app-version a {
+    color: rgba(255,255,255,0.25);
+    text-decoration: none;
+    pointer-events: all;
+  }
+  #app-version a:hover { color: rgba(255,255,255,0.5); }
 
   #toolbar-bottom {
     display: flex;
@@ -589,7 +598,7 @@
   }
 
   /* ── Ko-Fi donate button ───────────────────────────────── */
-  #kofi-donate {
+#kofi-donate {
     position: fixed;
     bottom: 16px;
     right: 16px;
@@ -630,7 +639,7 @@
       <img src="./media/logo.svg" alt="RefBoard" height="18">
       <div id="env-switcher">
         <select id="env-select" onchange="switchEnvironment(this.value)">
-          <option value="ifaf">IFAF 11v11</option>
+          <option value="ifaf">NCAA/IFAF Full Contact</option>
           <option value="flag">Flag</option>
         </select>
       </div>
@@ -666,6 +675,11 @@
         <img src="./media/icon-trash-can.svg" width="20" height="20" alt="">
         Reset
       </button>
+      <div class="top-divider"></div>
+      <button class="top-btn" data-tally-open="XxY06j" data-tally-layout="modal" data-tally-width="500">
+        <img src="./media/icon-feedback.svg" width="20" height="20" alt="">
+        Feedback
+      </button>
     </div>
 
   </div>
@@ -679,7 +693,7 @@
 
   <!-- ── Bottom toolbar ───────────────────────────────────── -->
   <div id="toolbar-bottom-wrapper">
-    <span id="app-version">vBETA</span>
+    <span id="app-version">vBETA<a href="./privacy.html" target="_blank" rel="noopener">Privacy Policy</a></span>
 
     <!-- Select sub-panel: trace + snap toggles -->
     <div id="subpanel-select" class="subpanel">
@@ -1889,5 +1903,6 @@ init();
 <a id="kofi-donate" href="https://ko-fi.com/wfazackerley" target="_blank" rel="noopener">
   Donate
 </a>
+<script async src="https://tally.so/widgets/embed.js"></script>
 </body>
 </html>
