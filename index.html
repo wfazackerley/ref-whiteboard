@@ -1615,6 +1615,17 @@ function eraseAt(pt) {
   // Tokens first (hit radius 24px)
   for (let i = state.tokens.length - 1; i >= 0; i--) {
     const tok = state.tokens[i];
+    // LtG is stored at yFrac=0 but visually spans fieldTop–fieldBottom; hit-test as vertical line
+    if (tok.team === 'ltg') {
+      const { fieldTop, fieldBottom } = ENVIRONMENTS[state.environment];
+      if (Math.abs(px - tok.xFrac * w) < 24 && py >= fieldTop * h - 10 && py <= fieldBottom * h + 10) {
+        state.history.push({ type: 'remove', token: tok });
+        state.future = [];
+        removeToken(tok);
+        return;
+      }
+      continue;
+    }
     if (Math.hypot(px - tok.xFrac * w, py - tok.yFrac * h) < 24) {
       state.history.push({ type: 'remove', token: tok });
       state.future = [];
