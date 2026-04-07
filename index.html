@@ -386,6 +386,13 @@
     z-index: 20;
   }
 
+  #cone-canvas {
+    position: absolute;
+    z-index: 5;
+    pointer-events: none;
+    touch-action: none;
+  }
+
   #draw-canvas {
     position: absolute;
     z-index: 10;
@@ -393,9 +400,56 @@
     touch-action: none;
   }
 
+  #cone-handle-layer {
+    position: absolute;
+    z-index: 25;
+    pointer-events: none;
+  }
+
+  .cone-handle {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(255, 200, 50, 0.85);
+    border: 2px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+    cursor: grab;
+    pointer-events: auto;
+    touch-action: none;
+    z-index: 26;
+  }
+  .cone-handle:active { cursor: grabbing; }
+  .cone-handle-delete {
+    background: rgba(220, 60, 50, 0.9);
+    border-color: rgba(255,255,255,0.9);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    line-height: 1;
+  }
+
   /* Placement cursor */
   body.placing #field-wrapper { cursor: crosshair; }
   body.drawing-mode #field-wrapper { cursor: crosshair; }
+
+  /* In cone mode, non-official tokens are always inert */
+  body.cone-mode .token:not(.token-ref) { pointer-events: none; }
+  /* In cone mode, officials show a default cursor */
+  body.cone-mode .token-ref { cursor: default; }
+  /* While a cone is being created, officials are also inert */
+  body.cone-creating .token-ref { pointer-events: none; }
+  /* Hover highlight for officials in cone mode — mouse only (pointer: fine excludes touch/tablet) */
+  @media (pointer: fine) {
+    body.cone-mode:not(.cone-creating) .token-ref:hover {
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.6);
+    }
+  }
 
   /* ── Tokens ───────────────────────────────────────────── */
   .token {
@@ -687,8 +741,10 @@
   <!-- ── Field (unchanged) ────────────────────────────────── -->
   <div id="field-wrapper">
     <img id="field-img" src="./field-ifaf.svg" alt="Football Field" draggable="false">
+    <canvas id="cone-canvas"></canvas>
     <div id="token-layer"></div>
     <canvas id="draw-canvas"></canvas>
+    <div id="cone-handle-layer"></div>
   </div>
 
   <!-- ── Bottom toolbar ───────────────────────────────────── -->
@@ -705,9 +761,12 @@
       </div>
     </div>
 
-    <!-- Official sub-panel: position type selector -->
+    <!-- Official sub-panel: position type selector + cone toggle -->
     <div id="subpanel-official" class="subpanel">
       <div id="official-type-btns" style="display:flex;align-items:center;gap:2px;"></div>
+      <div class="sp-divider"></div>
+      <button id="cone-toggle" class="sp-btn" onclick="toggleConeMode('midline')">&#9651; Cone by Midline</button>
+      <button id="cone-toggle-edge" class="sp-btn" onclick="toggleConeMode('edge')">&#9651; Cone by Edge</button>
     </div>
 
     <!-- Place-A sub-panel: player count -->
@@ -802,6 +861,12 @@ const state = {
   snapEnabled: true,
   snapResolution: 1,  // yards
   environment: 'ifaf',
+  cones: [],
+  coneActive: false,
+  coneVariant: 'midline', // 'midline' | 'edge'
+  coneState: null,   // { step: 1|2, official, tipXFrac?, tipYFrac?, edge1XFrac?, edge1YFrac? } during creation
+  coneEditing: null, // cone object currently showing handles
+  ghostCone: null,   // transient preview during creation
 };
 
 let _resizeTimer = null;
@@ -813,6 +878,7 @@ const fieldWrapper = document.getElementById('field-wrapper');
 const fieldImg     = document.getElementById('field-img');
 const tokenLayer   = document.getElementById('token-layer');
 const canvas       = document.getElementById('draw-canvas');
+const coneCanvas   = document.getElementById('cone-canvas');
 
 // ── Officials list ─────────────────────────────────────────
 const OFFICIALS = ['R', 'U', 'D', 'L', 'B', 'S', 'F', 'C'];
@@ -990,14 +1056,18 @@ function switchEnvironment(envKey) {
 // ── Overlays ───────────────────────────────────────────────
 function resizeOverlays() {
   const { x, y, w, h } = state.field;
-  [tokenLayer, canvas].forEach(el => {
+  const coneHandleLayer = document.getElementById('cone-handle-layer');
+  [tokenLayer, canvas, coneCanvas, coneHandleLayer].forEach(el => {
     el.style.left   = x + 'px';
     el.style.top    = y + 'px';
     el.style.width  = w + 'px';
     el.style.height = h + 'px';
   });
-  canvas.width  = Math.round(w);
-  canvas.height = Math.round(h);
+  canvas.width      = Math.round(w);
+  canvas.height     = Math.round(h);
+  coneCanvas.width  = Math.round(w);
+  coneCanvas.height = Math.round(h);
+  if (state.coneEditing) repositionConeHandles(state.coneEditing);
 }
 
 // ── Player counts ────────────────────────────────────────────
@@ -1025,6 +1095,16 @@ function traceColorFor(team) {
 const PLACEMENT_MODES = new Set(['place-a', 'place-b', 'official', 'flag', 'ball', 'ltg']);
 
 function setMode(mode) {
+  if (mode !== 'official' && state.coneActive) {
+    state.coneActive = false;
+    document.getElementById('cone-toggle').classList.remove('active');
+    document.getElementById('cone-toggle-edge').classList.remove('active');
+    document.body.classList.remove('cone-mode');
+    setConeState(null);
+    state.ghostCone = null;
+    clearConeHandles();
+    redrawCanvas();
+  }
   deselectToken();
   state.mode = mode;
 
@@ -1111,6 +1191,11 @@ function onFieldClick(e) {
     const snapped = snapFrac(xFrac, yFrac, { team }, 0);
     xFrac = snapped.xFrac;
     yFrac = snapped.yFrac;
+  }
+
+  if (state.coneActive && state.coneState) {
+    onConeFieldClick(xFrac, yFrac);
+    return;
   }
 
   if (state.mode === 'place-a')    placeToken(xFrac, yFrac, 'A', '1');
@@ -1216,13 +1301,18 @@ function createTokenEl(token) {
     e.preventDefault();
     e.stopPropagation();
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    if (state.coneActive && token.team === 'ref') {
+      onConeOfficialPointerDown(token);
+      return;
+    }
     beginDrag(e, token);
   });
 
   // Right-click remove
   el.addEventListener('contextmenu', e => {
     e.preventDefault();
-    state.history.push({ type: 'remove', token });
+    const removedCone = removeConeForToken(token);
+    state.history.push({ type: 'remove', token, cone: removedCone });
     state.future = [];
     removeToken(token);
   });
@@ -1261,6 +1351,17 @@ function removeToken(token) {
   const idx = state.tokens.indexOf(token);
   if (idx !== -1) state.tokens.splice(idx, 1);
   updatePlayerCounts();
+}
+
+// Removes and returns the cone belonging to a ref token, or null if none.
+function removeConeForToken(token) {
+  if (token.team !== 'ref') return null;
+  const cone = state.cones.find(c => c.officialId === token.id);
+  if (!cone) return null;
+  state.cones.splice(state.cones.indexOf(cone), 1);
+  if (state.coneEditing === cone) clearConeHandles();
+  redrawCanvas();
+  return cone;
 }
 
 function selectToken(token) {
@@ -1431,6 +1532,10 @@ function beginDrag(e, token) {
 }
 
 function onDocPointerMove(e) {
+  if (!state.dragging && state.coneActive && state.coneState) {
+    updateGhostCone(e.clientX, e.clientY);
+    return;
+  }
   if (!state.dragging) return;
   const { token, startPointerX, startPointerY, startXFrac, startYFrac } = state.dragging;
   const dx = e.clientX - startPointerX;
@@ -1472,6 +1577,13 @@ function onDocPointerMove(e) {
     token.yFrac = snapped.yFrac;
   }
   repositionToken(token);
+
+  if (state.coneEditing && state.coneEditing.officialId === token.id) {
+    repositionConeHandles(state.coneEditing);
+  }
+  if (state.cones.some(c => c.officialId === token.id)) {
+    redrawCanvas();
+  }
 
   if (state.currentTrace) {
     const prev = state.currentTrace.points[state.currentTrace.points.length - 1];
@@ -1619,7 +1731,8 @@ function eraseAt(pt) {
     if (tok.team === 'ltg') {
       const { fieldTop, fieldBottom } = ENVIRONMENTS[state.environment];
       if (Math.abs(px - tok.xFrac * w) < 24 && py >= fieldTop * h - 10 && py <= fieldBottom * h + 10) {
-        state.history.push({ type: 'remove', token: tok });
+        const removedCone = removeConeForToken(tok);
+        state.history.push({ type: 'remove', token: tok, cone: removedCone });
         state.future = [];
         removeToken(tok);
         return;
@@ -1627,7 +1740,8 @@ function eraseAt(pt) {
       continue;
     }
     if (Math.hypot(px - tok.xFrac * w, py - tok.yFrac * h) < 24) {
-      state.history.push({ type: 'remove', token: tok });
+      const removedCone = removeConeForToken(tok);
+      state.history.push({ type: 'remove', token: tok, cone: removedCone });
       state.future = [];
       removeToken(tok);
       return;
@@ -1698,6 +1812,18 @@ function redrawCanvas() {
     }
     ctx.stroke();
   });
+
+  // Cones are drawn on the dedicated cone-canvas (always behind tokens)
+  const coneCtx = coneCanvas.getContext('2d');
+  coneCtx.clearRect(0, 0, coneCanvas.width, coneCanvas.height);
+  state.cones.forEach(cone => {
+    const off = state.tokens.find(t => t.id === cone.officialId);
+    if (off) drawCone(coneCtx, off, cone, false);
+  });
+  if (state.ghostCone) {
+    const off = state.tokens.find(t => t.id === state.ghostCone.officialId);
+    if (off) drawCone(coneCtx, off, state.ghostCone, true);
+  }
 }
 
 function undo() {
@@ -1731,6 +1857,21 @@ function undo() {
     state.tokens.push(entry.token);
     tokenLayer.appendChild(entry.token.el);
     repositionToken(entry.token);
+    if (entry.cone) { state.cones.push(entry.cone); redrawCanvas(); }
+  } else if (entry.type === 'place-cone') {
+    const idx = state.cones.indexOf(entry.cone);
+    if (idx !== -1) state.cones.splice(idx, 1);
+    if (state.coneEditing === entry.cone) clearConeHandles();
+    redrawCanvas();
+  } else if (entry.type === 'edit-cone') {
+    entry.cone.tipXFrac  = entry.oldTipXFrac;
+    entry.cone.tipYFrac  = entry.oldTipYFrac;
+    entry.cone.halfAngle = entry.oldHalfAngle;
+    if (state.coneEditing === entry.cone) repositionConeHandles(entry.cone);
+    redrawCanvas();
+  } else if (entry.type === 'remove-cone') {
+    state.cones.push(entry.cone);
+    redrawCanvas();
   }
   updatePlayerCounts();
 }
@@ -1766,7 +1907,26 @@ function redo() {
     if (idx !== -1) state.traces.splice(idx, 1);
     redrawCanvas();
   } else if (entry.type === 'remove') {
+    if (entry.cone) {
+      const idx = state.cones.indexOf(entry.cone);
+      if (idx !== -1) state.cones.splice(idx, 1);
+      if (state.coneEditing === entry.cone) clearConeHandles();
+    }
     removeToken(entry.token);
+  } else if (entry.type === 'place-cone') {
+    state.cones.push(entry.cone);
+    redrawCanvas();
+  } else if (entry.type === 'edit-cone') {
+    entry.cone.tipXFrac  = entry.newTipXFrac;
+    entry.cone.tipYFrac  = entry.newTipYFrac;
+    entry.cone.halfAngle = entry.newHalfAngle;
+    if (state.coneEditing === entry.cone) repositionConeHandles(entry.cone);
+    redrawCanvas();
+  } else if (entry.type === 'remove-cone') {
+    const idx = state.cones.indexOf(entry.cone);
+    if (idx !== -1) state.cones.splice(idx, 1);
+    if (state.coneEditing === entry.cone) clearConeHandles();
+    redrawCanvas();
   }
   updatePlayerCounts();
 }
@@ -1845,6 +2005,15 @@ function saveScenario() {
         xFrac: +p.xFrac.toFixed(4), yFrac: +p.yFrac.toFixed(4)
       })),
     })),
+    cones: state.cones.map(c => {
+      const off = state.tokens.find(t => t.id === c.officialId);
+      return {
+        officialLabel: off?.label,
+        tipXFrac: +c.tipXFrac.toFixed(4),
+        tipYFrac: +c.tipYFrac.toFixed(4),
+        halfAngle: +c.halfAngle.toFixed(6),
+      };
+    }),
   };
 
   const json = JSON.stringify(data, null, 2);
@@ -1865,6 +2034,10 @@ function loadScenarioData(data) {
   clearAll();
   (data.tokens || []).forEach(t => placeToken(t.xFrac, t.yFrac, t.team, t.label));
   state.strokes = data.strokes || [];
+  (data.cones || []).forEach(c => {
+    const off = state.tokens.find(t => t.team === 'ref' && t.label === c.officialLabel);
+    if (off) state.cones.push({ id: _nextId++, officialId: off.id, tipXFrac: c.tipXFrac, tipYFrac: c.tipYFrac, halfAngle: c.halfAngle });
+  });
   redrawCanvas();
 }
 
@@ -1892,6 +2065,10 @@ function clearAllTokens() {
 }
 
 function clearAll() {
+  state.cones = [];
+  setConeState(null);
+  state.ghostCone = null;
+  clearConeHandles();
   clearAllTokens();
   clearDrawings();
 }
@@ -1902,6 +2079,364 @@ function resetEverything() {
   setMode('select');
 }
 
+
+// ── Vision cone helpers ─────────────────────────────────────
+function angleDiff(a, b) {
+  let d = a - b;
+  while (d >  Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return d;
+}
+
+function drawCone(ctx, official, cone, isGhost) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  const apexX = official.xFrac * w;
+  const apexY = official.yFrac * h;
+  const tipX  = cone.tipXFrac * w;
+  const tipY  = cone.tipYFrac * h;
+  const length = Math.hypot(tipX - apexX, tipY - apexY);
+  if (length < 2) return;
+  const midAngle = Math.atan2(tipY - apexY, tipX - apexX);
+
+  ctx.save();
+
+  if (cone.halfAngle > 0.001) {
+    const e1x = apexX + length * Math.cos(midAngle + cone.halfAngle);
+    const e1y = apexY + length * Math.sin(midAngle + cone.halfAngle);
+    const e2x = apexX + length * Math.cos(midAngle - cone.halfAngle);
+    const e2y = apexY + length * Math.sin(midAngle - cone.halfAngle);
+
+    // apex → e1 → arc through tip → e2 → apex
+    ctx.beginPath();
+    ctx.moveTo(apexX, apexY);
+    ctx.lineTo(e1x, e1y);
+    ctx.arc(apexX, apexY, length, midAngle + cone.halfAngle, midAngle - cone.halfAngle, true);
+    ctx.closePath();
+    ctx.fillStyle = isGhost ? 'rgba(255,200,50,0.10)' : 'rgba(255,200,50,0.20)';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(apexX, apexY);
+    ctx.lineTo(e1x, e1y);
+    ctx.arc(apexX, apexY, length, midAngle + cone.halfAngle, midAngle - cone.halfAngle, true);
+    ctx.closePath();
+    ctx.strokeStyle = isGhost ? 'rgba(255,200,50,0.35)' : 'rgba(255,200,50,0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([]);
+    ctx.stroke();
+  }
+
+  // Midline (dashed)
+  ctx.beginPath();
+  ctx.setLineDash([6, 4]);
+  ctx.moveTo(apexX, apexY);
+  ctx.lineTo(tipX, tipY);
+  ctx.strokeStyle = isGhost ? 'rgba(255,200,50,0.45)' : 'rgba(255,200,50,0.9)';
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.restore();
+}
+
+function setConeState(val) {
+  state.coneState = val;
+  document.body.classList.toggle('cone-creating', val !== null);
+}
+
+// ── Cone toggle ─────────────────────────────────────────────
+function toggleConeMode(variant = 'midline') {
+  const wasActive = state.coneActive && state.coneVariant === variant;
+  // Deactivate (any active variant) first
+  if (state.coneActive) {
+    state.coneActive = false;
+    document.getElementById('cone-toggle').classList.remove('active');
+    document.getElementById('cone-toggle-edge').classList.remove('active');
+    document.body.classList.remove('cone-mode');
+    setConeState(null);
+    state.ghostCone = null;
+    clearConeHandles();
+    redrawCanvas();
+  }
+  // Re-activate with new variant unless we just toggled off the same one
+  if (!wasActive) {
+    state.coneActive = true;
+    state.coneVariant = variant;
+    document.getElementById(variant === 'edge' ? 'cone-toggle-edge' : 'cone-toggle').classList.add('active');
+    document.body.classList.add('cone-mode');
+  }
+}
+
+// ── Cone creation ────────────────────────────────────────────
+function onConeOfficialPointerDown(token) {
+  const existingCone = state.cones.find(c => c.officialId === token.id);
+  if (existingCone) {
+    setConeState(null);
+    state.ghostCone = null;
+    buildConeHandles(existingCone);
+    redrawCanvas();
+  } else {
+    setConeState({ step: 1, official: token });
+    clearConeHandles();
+    state.ghostCone = null;
+    redrawCanvas();
+  }
+}
+
+function onConeFieldClick(xFrac, yFrac) {
+  if (!state.coneState) return;
+  if (state.coneVariant === 'edge') {
+    onConeFieldClickEdge(xFrac, yFrac);
+  } else {
+    onConeFieldClickMidline(xFrac, yFrac);
+  }
+}
+
+function onConeFieldClickMidline(xFrac, yFrac) {
+  if (state.coneState.step === 1) {
+    setConeState({ ...state.coneState, step: 2, tipXFrac: xFrac, tipYFrac: yFrac });
+  } else if (state.coneState.step === 2) {
+    const { official } = state.coneState;
+    const { w, h } = state.field;
+    const apexX     = official.xFrac * w;
+    const apexY     = official.yFrac * h;
+    const tipX      = state.coneState.tipXFrac * w;
+    const tipY      = state.coneState.tipYFrac * h;
+    const clickX    = xFrac * w;
+    const clickY    = yFrac * h;
+    const midAngle  = Math.atan2(tipY - apexY, tipX - apexX);
+    const clickAngle = Math.atan2(clickY - apexY, clickX - apexX);
+    let halfAngle   = Math.abs(angleDiff(clickAngle, midAngle));
+    halfAngle = Math.max(Math.PI / 180, Math.min(89 * Math.PI / 180, halfAngle));
+
+    const cone = {
+      id: _nextId++,
+      officialId: official.id,
+      tipXFrac:   state.coneState.tipXFrac,
+      tipYFrac:   state.coneState.tipYFrac,
+      halfAngle,
+    };
+    state.cones.push(cone);
+    state.history.push({ type: 'place-cone', cone });
+    state.future = [];
+    setConeState(null);
+    state.ghostCone = null;
+    redrawCanvas();
+    buildConeHandles(cone);
+  }
+}
+
+function onConeFieldClickEdge(xFrac, yFrac) {
+  if (state.coneState.step === 1) {
+    setConeState({ ...state.coneState, step: 2, edge1XFrac: xFrac, edge1YFrac: yFrac });
+  } else if (state.coneState.step === 2) {
+    const { official, edge1XFrac, edge1YFrac } = state.coneState;
+    const { w, h } = state.field;
+    const shape = edgesToConeShape(official, edge1XFrac, edge1YFrac, xFrac, yFrac, w, h);
+    if (!shape) return;
+    const cone = { id: _nextId++, ...shape };
+    state.cones.push(cone);
+    state.history.push({ type: 'place-cone', cone });
+    state.future = [];
+    setConeState(null);
+    state.ghostCone = null;
+    redrawCanvas();
+    buildConeHandles(cone);
+  }
+}
+
+// Given two edge endpoints (in fractions), compute the cone shape data.
+// The midline is the bisector of the two edge rays; the arc radius is
+// the longer of the two edge distances.
+function edgesToConeShape(official, e1xFrac, e1yFrac, e2xFrac, e2yFrac, w, h) {
+  const apexX  = official.xFrac * w;
+  const apexY  = official.yFrac * h;
+  const angle1 = Math.atan2(e1yFrac * h - apexY, e1xFrac * w - apexX);
+  const angle2 = Math.atan2(e2yFrac * h - apexY, e2xFrac * w - apexX);
+  let halfAngle = Math.abs(angleDiff(angle1, angle2)) / 2;
+  halfAngle = Math.max(Math.PI / 180, Math.min(89 * Math.PI / 180, halfAngle));
+  // Bisector angle (handles wraparound correctly)
+  const midAngle = angle1 + angleDiff(angle2, angle1) / 2;
+  const dist1  = Math.hypot(e1xFrac * w - apexX, e1yFrac * h - apexY);
+  const dist2  = Math.hypot(e2xFrac * w - apexX, e2yFrac * h - apexY);
+  const length = Math.max(dist1, dist2);
+  if (length < 2) return null;
+  return {
+    officialId: official.id,
+    tipXFrac:   (apexX + length * Math.cos(midAngle)) / w,
+    tipYFrac:   (apexY + length * Math.sin(midAngle)) / h,
+    halfAngle,
+  };
+}
+
+function updateGhostCone(clientX, clientY) {
+  if (!state.coneState) return;
+  const wRect = fieldWrapper.getBoundingClientRect();
+  const { x: fx, y: fy, w, h } = state.field;
+  const xFrac = Math.max(0, Math.min(1, (clientX - wRect.left - fx) / w));
+  const yFrac = Math.max(0, Math.min(1, (clientY - wRect.top  - fy) / h));
+  const { official } = state.coneState;
+
+  if (state.coneState.step === 1) {
+    state.ghostCone = { officialId: official.id, tipXFrac: xFrac, tipYFrac: yFrac, halfAngle: 0 };
+  } else if (state.coneState.step === 2) {
+    if (state.coneVariant === 'edge') {
+      const { edge1XFrac, edge1YFrac } = state.coneState;
+      const shape = edgesToConeShape(official, edge1XFrac, edge1YFrac, xFrac, yFrac, w, h);
+      state.ghostCone = shape ? { ...shape } : null;
+    } else {
+      const apexX      = official.xFrac * w;
+      const apexY      = official.yFrac * h;
+      const tipX       = state.coneState.tipXFrac * w;
+      const tipY       = state.coneState.tipYFrac * h;
+      const midAngle   = Math.atan2(tipY - apexY, tipX - apexX);
+      const cursorAngle = Math.atan2(yFrac * h - apexY, xFrac * w - apexX);
+      let halfAngle    = Math.abs(angleDiff(cursorAngle, midAngle));
+      halfAngle = Math.max(Math.PI / 180, Math.min(89 * Math.PI / 180, halfAngle));
+      state.ghostCone = {
+        officialId: official.id,
+        tipXFrac:   state.coneState.tipXFrac,
+        tipYFrac:   state.coneState.tipYFrac,
+        halfAngle,
+      };
+    }
+  }
+  redrawCanvas();
+}
+
+// ── Cone handle management ───────────────────────────────────
+function buildConeHandles(cone) {
+  clearConeHandles();
+  state.coneEditing = cone;
+  const layer = document.getElementById('cone-handle-layer');
+
+  const tipHandle    = document.createElement('div');
+  tipHandle.className = 'cone-handle cone-handle-tip';
+  tipHandle.title    = 'Drag to move midline';
+
+  const edge1Handle  = document.createElement('div');
+  edge1Handle.className = 'cone-handle cone-handle-edge';
+  edge1Handle.title  = 'Drag to adjust angle';
+
+  const edge2Handle  = document.createElement('div');
+  edge2Handle.className = 'cone-handle cone-handle-edge';
+  edge2Handle.title  = 'Drag to adjust angle';
+
+  const deleteHandle = document.createElement('div');
+  deleteHandle.className = 'cone-handle cone-handle-delete';
+  deleteHandle.textContent = '×';
+  deleteHandle.title = 'Delete cone';
+
+  layer.appendChild(tipHandle);
+  layer.appendChild(edge1Handle);
+  layer.appendChild(edge2Handle);
+  layer.appendChild(deleteHandle);
+
+  setupConeHandleDrag(tipHandle,   cone, 'tip');
+  setupConeHandleDrag(edge1Handle, cone, 'edge');
+  setupConeHandleDrag(edge2Handle, cone, 'edge');
+
+  deleteHandle.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    e.preventDefault();
+    const idx = state.cones.indexOf(cone);
+    if (idx !== -1) state.cones.splice(idx, 1);
+    state.history.push({ type: 'remove-cone', cone });
+    state.future = [];
+    clearConeHandles();
+    redrawCanvas();
+  });
+
+  repositionConeHandles(cone);
+}
+
+function repositionConeHandles(cone) {
+  const official = state.tokens.find(t => t.id === cone.officialId);
+  if (!official) return;
+  const layer = document.getElementById('cone-handle-layer');
+  const handles = layer.querySelectorAll('.cone-handle');
+  if (handles.length < 4) return;
+
+  const { w, h } = state.field;
+  const apexX = official.xFrac * w;
+  const apexY = official.yFrac * h;
+  const tipX  = cone.tipXFrac * w;
+  const tipY  = cone.tipYFrac * h;
+  const length = Math.hypot(tipX - apexX, tipY - apexY);
+  const midAngle = Math.atan2(tipY - apexY, tipX - apexX);
+  const e1x = apexX + length * Math.cos(midAngle + cone.halfAngle);
+  const e1y = apexY + length * Math.sin(midAngle + cone.halfAngle);
+  const e2x = apexX + length * Math.cos(midAngle - cone.halfAngle);
+  const e2y = apexY + length * Math.sin(midAngle - cone.halfAngle);
+
+  function pos(el, x, y) { el.style.left = x + 'px'; el.style.top = y + 'px'; }
+  pos(handles[0], tipX, tipY);
+  pos(handles[1], e1x, e1y);
+  pos(handles[2], e2x, e2y);
+  // delete handle: offset from midline tip
+  const delOffX = Math.cos(midAngle - Math.PI / 2) * 20;
+  const delOffY = Math.sin(midAngle - Math.PI / 2) * 20;
+  pos(handles[3], tipX + delOffX, tipY + delOffY);
+}
+
+function clearConeHandles() {
+  document.getElementById('cone-handle-layer').innerHTML = '';
+  state.coneEditing = null;
+}
+
+function setupConeHandleDrag(el, cone, type) {
+  el.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    el.setPointerCapture(e.pointerId);
+
+    const snapshot = { tipXFrac: cone.tipXFrac, tipYFrac: cone.tipYFrac, halfAngle: cone.halfAngle };
+
+    function onMove(ev) {
+      const official = state.tokens.find(t => t.id === cone.officialId);
+      if (!official) return;
+      const wRect = fieldWrapper.getBoundingClientRect();
+      const { x: fx, y: fy, w, h } = state.field;
+      const pxX = ev.clientX - wRect.left - fx;
+      const pxY = ev.clientY - wRect.top  - fy;
+
+      if (type === 'tip') {
+        cone.tipXFrac = Math.max(0, Math.min(1, pxX / w));
+        cone.tipYFrac = Math.max(0, Math.min(1, pxY / h));
+      } else {
+        const apexX  = official.xFrac * w;
+        const apexY  = official.yFrac * h;
+        const midAngle = Math.atan2(cone.tipYFrac * h - apexY, cone.tipXFrac * w - apexX);
+        const cursorAngle = Math.atan2(pxY - apexY, pxX - apexX);
+        let ha = Math.abs(angleDiff(cursorAngle, midAngle));
+        ha = Math.max(Math.PI / 180, Math.min(89 * Math.PI / 180, ha));
+        cone.halfAngle = ha;
+      }
+      repositionConeHandles(cone);
+      redrawCanvas();
+    }
+
+    function onUp() {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup',   onUp);
+      if (cone.tipXFrac !== snapshot.tipXFrac || cone.tipYFrac !== snapshot.tipYFrac || cone.halfAngle !== snapshot.halfAngle) {
+        state.history.push({
+          type: 'edit-cone', cone,
+          oldTipXFrac: snapshot.tipXFrac, oldTipYFrac: snapshot.tipYFrac, oldHalfAngle: snapshot.halfAngle,
+          newTipXFrac: cone.tipXFrac,     newTipYFrac: cone.tipYFrac,     newHalfAngle: cone.halfAngle,
+        });
+        state.future = [];
+      }
+    }
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup',   onUp);
+  });
+}
 
 // ── Default scenarios ─────────────────────────────────────────
 const DEFAULT_SCENARIO_IFAF = {"tokens":[{"team":"ball","label":"","xFrac":0.3788,"yFrac":0.4969},{"team":"A","label":"54","xFrac":0.3626,"yFrac":0.4969},{"team":"A","label":"64","xFrac":0.3623,"yFrac":0.4639},{"team":"A","label":"74","xFrac":0.3618,"yFrac":0.4309},{"team":"A","label":"66","xFrac":0.3626,"yFrac":0.5278},{"team":"A","label":"76","xFrac":0.3626,"yFrac":0.5623},{"team":"A","label":"86","xFrac":0.3535,"yFrac":0.5978},{"team":"A","label":"8","xFrac":0.338,"yFrac":0.4957},{"team":"A","label":"24","xFrac":0.3337,"yFrac":0.5418},{"team":"A","label":"14","xFrac":0.3613,"yFrac":0.7516},{"team":"A","label":"16","xFrac":0.3464,"yFrac":0.3075},{"team":"A","label":"18","xFrac":0.36,"yFrac":0.2386},{"team":"B","label":"53","xFrac":0.3937,"yFrac":0.4477},{"team":"B","label":"55","xFrac":0.3937,"yFrac":0.4957},{"team":"B","label":"57","xFrac":0.3931,"yFrac":0.5461},{"team":"B","label":"43","xFrac":0.4142,"yFrac":0.4076},{"team":"B","label":"45","xFrac":0.4164,"yFrac":0.4637},{"team":"B","label":"47","xFrac":0.4171,"yFrac":0.5234},{"team":"B","label":"49","xFrac":0.4154,"yFrac":0.5881},{"team":"B","label":"23","xFrac":0.3983,"yFrac":0.7491},{"team":"B","label":"25","xFrac":0.4268,"yFrac":0.3014},{"team":"B","label":"27","xFrac":0.4054,"yFrac":0.2362},{"team":"B","label":"34","xFrac":0.4797,"yFrac":0.5626},{"team":"ref","label":"R","xFrac":0.2764,"yFrac":0.5634},{"team":"ref","label":"U","xFrac":0.4384,"yFrac":0.4779},{"team":"ref","label":"D","xFrac":0.3782,"yFrac":0.0763},{"team":"ref","label":"L","xFrac":0.3788,"yFrac":0.9238},{"team":"ref","label":"B","xFrac":0.5797,"yFrac":0.5203},{"team":"ref","label":"S","xFrac":0.5557,"yFrac":0.075},{"team":"ref","label":"F","xFrac":0.5564,"yFrac":0.925},{"team":"ref","label":"C","xFrac":0.2745,"yFrac":0.4293}],"strokes":[]};

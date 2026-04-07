@@ -9,6 +9,7 @@ An interactive referee whiteboard for visualizing American football field scenar
 - **Two environments** — IFAF 11v11 (120 × 56 yd) and Flag football (70 × 25 yd)
 - **Tokens** — Team A players, Team B players, officials (R/U/D/L/B/S/F/C), penalty flag, ball, and line-to-gain marker
 - **Editable numbers** — double-tap or double-click any player token to edit its number
+- **Vision cones** — attach a vision cone to any official; two creation modes: midline-first (Cone) or edge-to-edge (Edges). Cones render behind all tokens and are removed automatically when their official is deleted.
 - **Freehand drawing** — annotate the field with configurable color and stroke width
 - **Snap to grid** — tokens snap to the nearest yard (1 yd IFAF, 0.5 yd Flag) when placed or dropped
 - **Trace movement** — optionally draw a trail as you drag tokens
