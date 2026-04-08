@@ -499,6 +499,11 @@
     z-index: 50 !important;
   }
 
+  .cone-official-active {
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.9);
+    z-index: 50 !important;
+  }
+
   .token.dragging {
     cursor: grabbing;
     box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 0 3px rgba(255,215,0,0.8);
@@ -787,8 +792,7 @@
     <div id="subpanel-official" class="subpanel">
       <div id="official-type-btns" style="display:flex;align-items:center;gap:2px;"></div>
       <div class="sp-divider"></div>
-      <button id="cone-toggle" class="sp-btn" onclick="toggleConeMode('midline')">&#9651; Cone by Midline</button>
-      <button id="cone-toggle-edge" class="sp-btn" onclick="toggleConeMode('edge')">&#9651; Cone by Edge</button>
+      <button id="cone-toggle" class="sp-btn" onclick="toggleConeMode()">&#9651; Vision Cone</button>
     </div>
 
     <!-- Place-A sub-panel: player count -->
@@ -890,8 +894,7 @@ const state = {
   environment: 'ifaf',
   cones: [],
   coneActive: false,
-  coneVariant: 'midline', // 'midline' | 'edge'
-  coneState: null,   // { step: 1|2, official, tipXFrac?, tipYFrac?, edge1XFrac?, edge1YFrac? } during creation
+  coneState: null,   // { step: 1|2, official, pt1XFrac?, pt1YFrac? } during creation
   coneEditing: null, // cone object currently showing handles
   ghostCone: null,   // transient preview during creation
 };
@@ -1003,7 +1006,20 @@ function init() {
 
   // Field click (for placement)
   fieldWrapper.addEventListener('click', onFieldClick);
-  fieldWrapper.addEventListener('pointerdown', () => deselectToken());
+  fieldWrapper.addEventListener('pointerdown', () => {
+    deselectToken();
+    if (state.coneEditing) { clearConeHandles(); redrawCanvas(); }
+  });
+
+  // Right-click during cone creation cancels it
+  fieldWrapper.addEventListener('contextmenu', e => {
+    if (state.coneActive && state.coneState) {
+      e.preventDefault();
+      setConeState(null);
+      state.ghostCone = null;
+      redrawCanvas();
+    }
+  });
 
   // Global pointer events for drag
   document.addEventListener('pointermove',   onDocPointerMove);
@@ -1012,7 +1028,9 @@ function init() {
 
   // Undo shortcut
   document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+    if (e.key === 'Escape') {
+      if (state.coneEditing) { e.preventDefault(); clearConeHandles(); redrawCanvas(); }
+    } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
       e.preventDefault();
       undo();
     } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
@@ -1126,7 +1144,6 @@ function setMode(mode) {
   if (mode !== 'official' && state.coneActive) {
     state.coneActive = false;
     document.getElementById('cone-toggle').classList.remove('active');
-    document.getElementById('cone-toggle-edge').classList.remove('active');
     document.body.classList.remove('cone-mode');
     setConeState(null);
     state.ghostCone = null;
@@ -1329,6 +1346,10 @@ function createTokenEl(token) {
     e.preventDefault();
     e.stopPropagation();
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    if (state.coneEditing && token.id !== state.coneEditing.officialId) {
+      clearConeHandles();
+      redrawCanvas();
+    }
     if (state.coneActive && token.team === 'ref') {
       onConeOfficialPointerDown(token);
       return;
@@ -1336,9 +1357,15 @@ function createTokenEl(token) {
     beginDrag(e, token);
   });
 
-  // Right-click remove
+  // Right-click remove (or cancel cone creation)
   el.addEventListener('contextmenu', e => {
     e.preventDefault();
+    if (state.coneActive && state.coneState) {
+      setConeState(null);
+      state.ghostCone = null;
+      redrawCanvas();
+      return;
+    }
     const removedCone = removeConeForToken(token);
     state.history.push({ type: 'remove', token, cone: removedCone });
     state.future = [];
@@ -2028,9 +2055,10 @@ function undo() {
     if (state.coneEditing === entry.cone) clearConeHandles();
     redrawCanvas();
   } else if (entry.type === 'edit-cone') {
-    entry.cone.tipXFrac  = entry.oldTipXFrac;
-    entry.cone.tipYFrac  = entry.oldTipYFrac;
-    entry.cone.halfAngle = entry.oldHalfAngle;
+    entry.cone.pt1XFrac = entry.oldPt1XFrac;
+    entry.cone.pt1YFrac = entry.oldPt1YFrac;
+    entry.cone.pt2XFrac = entry.oldPt2XFrac;
+    entry.cone.pt2YFrac = entry.oldPt2YFrac;
     if (state.coneEditing === entry.cone) repositionConeHandles(entry.cone);
     redrawCanvas();
   } else if (entry.type === 'remove-cone') {
@@ -2081,9 +2109,10 @@ function redo() {
     state.cones.push(entry.cone);
     redrawCanvas();
   } else if (entry.type === 'edit-cone') {
-    entry.cone.tipXFrac  = entry.newTipXFrac;
-    entry.cone.tipYFrac  = entry.newTipYFrac;
-    entry.cone.halfAngle = entry.newHalfAngle;
+    entry.cone.pt1XFrac = entry.newPt1XFrac;
+    entry.cone.pt1YFrac = entry.newPt1YFrac;
+    entry.cone.pt2XFrac = entry.newPt2XFrac;
+    entry.cone.pt2YFrac = entry.newPt2YFrac;
     if (state.coneEditing === entry.cone) repositionConeHandles(entry.cone);
     redrawCanvas();
   } else if (entry.type === 'remove-cone') {
@@ -2209,9 +2238,8 @@ function saveScenario() {
       const off = state.tokens.find(t => t.id === c.officialId);
       return {
         officialLabel: off?.label,
-        tipXFrac: +c.tipXFrac.toFixed(4),
-        tipYFrac: +c.tipYFrac.toFixed(4),
-        halfAngle: +c.halfAngle.toFixed(6),
+        pt1XFrac: +c.pt1XFrac.toFixed(4), pt1YFrac: +c.pt1YFrac.toFixed(4),
+        pt2XFrac: +c.pt2XFrac.toFixed(4), pt2YFrac: +c.pt2YFrac.toFixed(4),
       };
     }),
   };
@@ -2236,7 +2264,9 @@ function loadScenarioData(data) {
   state.strokes = data.strokes || [];
   (data.cones || []).forEach(c => {
     const off = state.tokens.find(t => t.team === 'ref' && t.label === c.officialLabel);
-    if (off) state.cones.push({ id: _nextId++, officialId: off.id, tipXFrac: c.tipXFrac, tipYFrac: c.tipYFrac, halfAngle: c.halfAngle });
+    if (off && c.pt1XFrac != null) {
+      state.cones.push({ id: _nextId++, officialId: off.id, pt1XFrac: c.pt1XFrac, pt1YFrac: c.pt1YFrac, pt2XFrac: c.pt2XFrac, pt2YFrac: c.pt2YFrac });
+    }
   });
   redrawCanvas();
 }
@@ -2281,91 +2311,70 @@ function resetEverything() {
 
 
 // ── Vision cone helpers ─────────────────────────────────────
-function angleDiff(a, b) {
-  let d = a - b;
-  while (d >  Math.PI) d -= 2 * Math.PI;
-  while (d < -Math.PI) d += 2 * Math.PI;
-  return d;
-}
-
 function drawCone(ctx, official, cone, isGhost) {
   const w = ctx.canvas.width;
   const h = ctx.canvas.height;
   const apexX = official.xFrac * w;
   const apexY = official.yFrac * h;
-  const tipX  = cone.tipXFrac * w;
-  const tipY  = cone.tipYFrac * h;
-  const length = Math.hypot(tipX - apexX, tipY - apexY);
-  if (length < 2) return;
-  const midAngle = Math.atan2(tipY - apexY, tipX - apexX);
+  const pt1X  = cone.pt1XFrac * w;
+  const pt1Y  = cone.pt1YFrac * h;
+  const pt2X  = cone.pt2XFrac * w;
+  const pt2Y  = cone.pt2YFrac * h;
 
   ctx.save();
-
-  if (cone.halfAngle > 0.001) {
-    const e1x = apexX + length * Math.cos(midAngle + cone.halfAngle);
-    const e1y = apexY + length * Math.sin(midAngle + cone.halfAngle);
-    const e2x = apexX + length * Math.cos(midAngle - cone.halfAngle);
-    const e2y = apexY + length * Math.sin(midAngle - cone.halfAngle);
-
-    // apex → e1 → arc through tip → e2 → apex
-    ctx.beginPath();
-    ctx.moveTo(apexX, apexY);
-    ctx.lineTo(e1x, e1y);
-    ctx.arc(apexX, apexY, length, midAngle + cone.halfAngle, midAngle - cone.halfAngle, true);
-    ctx.closePath();
-    ctx.fillStyle = isGhost ? 'rgba(255,200,50,0.10)' : 'rgba(255,200,50,0.20)';
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.moveTo(apexX, apexY);
-    ctx.lineTo(e1x, e1y);
-    ctx.arc(apexX, apexY, length, midAngle + cone.halfAngle, midAngle - cone.halfAngle, true);
-    ctx.closePath();
-    ctx.strokeStyle = isGhost ? 'rgba(255,200,50,0.35)' : 'rgba(255,200,50,0.85)';
-    ctx.lineWidth = 1.5;
-    ctx.lineCap = 'round';
-    ctx.setLineDash([]);
-    ctx.stroke();
-  }
-
-  // Midline (dashed)
+  // Fill the full triangle
   ctx.beginPath();
-  ctx.setLineDash([6, 4]);
   ctx.moveTo(apexX, apexY);
-  ctx.lineTo(tipX, tipY);
-  ctx.strokeStyle = isGhost ? 'rgba(255,200,50,0.45)' : 'rgba(255,200,50,0.9)';
+  ctx.lineTo(pt1X, pt1Y);
+  ctx.lineTo(pt2X, pt2Y);
+  ctx.closePath();
+  ctx.fillStyle = isGhost ? 'rgba(255,200,50,0.10)' : 'rgba(255,200,50,0.20)';
+  ctx.fill();
+  // Stroke only the two sides from the apex (not the pt1→pt2 base)
+  ctx.strokeStyle = isGhost ? 'rgba(255,200,50,0.35)' : 'rgba(255,200,50,0.85)';
   ctx.lineWidth = 1.5;
   ctx.lineCap = 'round';
-  ctx.stroke();
   ctx.setLineDash([]);
-
+  ctx.beginPath();
+  ctx.moveTo(pt1X, pt1Y);
+  ctx.lineTo(apexX, apexY);
+  ctx.lineTo(pt2X, pt2Y);
+  ctx.stroke();
   ctx.restore();
 }
 
 function setConeState(val) {
   state.coneState = val;
   document.body.classList.toggle('cone-creating', val !== null);
+  updateConeOfficialRing();
+}
+
+function updateConeOfficialRing() {
+  document.querySelectorAll('.cone-official-active').forEach(el => el.classList.remove('cone-official-active'));
+  let officialId = null;
+  if (state.coneState)   officialId = state.coneState.official.id;
+  else if (state.coneEditing) officialId = state.coneEditing.officialId;
+  if (officialId != null) {
+    const token = state.tokens.find(t => t.id === officialId);
+    if (token) token.el.classList.add('cone-official-active');
+  }
 }
 
 // ── Cone toggle ─────────────────────────────────────────────
-function toggleConeMode(variant = 'midline') {
-  const wasActive = state.coneActive && state.coneVariant === variant;
-  // Deactivate (any active variant) first
+function toggleConeMode() {
+  const wasActive = state.coneActive;
   if (state.coneActive) {
     state.coneActive = false;
     document.getElementById('cone-toggle').classList.remove('active');
-    document.getElementById('cone-toggle-edge').classList.remove('active');
     document.body.classList.remove('cone-mode');
     setConeState(null);
     state.ghostCone = null;
     clearConeHandles();
     redrawCanvas();
   }
-  // Re-activate with new variant unless we just toggled off the same one
   if (!wasActive) {
     state.coneActive = true;
-    state.coneVariant = variant;
-    document.getElementById(variant === 'edge' ? 'cone-toggle-edge' : 'cone-toggle').classList.add('active');
+    document.getElementById('cone-toggle').classList.add('active');
     document.body.classList.add('cone-mode');
   }
 }
@@ -2388,36 +2397,19 @@ function onConeOfficialPointerDown(token) {
 
 function onConeFieldClick(xFrac, yFrac) {
   if (!state.coneState) return;
-  if (state.coneVariant === 'edge') {
-    onConeFieldClickEdge(xFrac, yFrac);
-  } else {
-    onConeFieldClickMidline(xFrac, yFrac);
-  }
+  onConeFieldClickTriangle(xFrac, yFrac);
 }
 
-function onConeFieldClickMidline(xFrac, yFrac) {
+function onConeFieldClickTriangle(xFrac, yFrac) {
   if (state.coneState.step === 1) {
-    setConeState({ ...state.coneState, step: 2, tipXFrac: xFrac, tipYFrac: yFrac });
+    setConeState({ ...state.coneState, step: 2, pt1XFrac: xFrac, pt1YFrac: yFrac });
   } else if (state.coneState.step === 2) {
-    const { official } = state.coneState;
-    const { w, h } = state.field;
-    const apexX     = official.xFrac * w;
-    const apexY     = official.yFrac * h;
-    const tipX      = state.coneState.tipXFrac * w;
-    const tipY      = state.coneState.tipYFrac * h;
-    const clickX    = xFrac * w;
-    const clickY    = yFrac * h;
-    const midAngle  = Math.atan2(tipY - apexY, tipX - apexX);
-    const clickAngle = Math.atan2(clickY - apexY, clickX - apexX);
-    let halfAngle   = Math.abs(angleDiff(clickAngle, midAngle));
-    halfAngle = Math.max(Math.PI / 180, Math.min(89 * Math.PI / 180, halfAngle));
-
+    const { official, pt1XFrac, pt1YFrac } = state.coneState;
     const cone = {
       id: _nextId++,
       officialId: official.id,
-      tipXFrac:   state.coneState.tipXFrac,
-      tipYFrac:   state.coneState.tipYFrac,
-      halfAngle,
+      pt1XFrac, pt1YFrac,
+      pt2XFrac: xFrac, pt2YFrac: yFrac,
     };
     state.cones.push(cone);
     state.history.push({ type: 'place-cone', cone });
@@ -2429,49 +2421,6 @@ function onConeFieldClickMidline(xFrac, yFrac) {
   }
 }
 
-function onConeFieldClickEdge(xFrac, yFrac) {
-  if (state.coneState.step === 1) {
-    setConeState({ ...state.coneState, step: 2, edge1XFrac: xFrac, edge1YFrac: yFrac });
-  } else if (state.coneState.step === 2) {
-    const { official, edge1XFrac, edge1YFrac } = state.coneState;
-    const { w, h } = state.field;
-    const shape = edgesToConeShape(official, edge1XFrac, edge1YFrac, xFrac, yFrac, w, h);
-    if (!shape) return;
-    const cone = { id: _nextId++, ...shape };
-    state.cones.push(cone);
-    state.history.push({ type: 'place-cone', cone });
-    state.future = [];
-    setConeState(null);
-    state.ghostCone = null;
-    redrawCanvas();
-    buildConeHandles(cone);
-  }
-}
-
-// Given two edge endpoints (in fractions), compute the cone shape data.
-// The midline is the bisector of the two edge rays; the arc radius is
-// the longer of the two edge distances.
-function edgesToConeShape(official, e1xFrac, e1yFrac, e2xFrac, e2yFrac, w, h) {
-  const apexX  = official.xFrac * w;
-  const apexY  = official.yFrac * h;
-  const angle1 = Math.atan2(e1yFrac * h - apexY, e1xFrac * w - apexX);
-  const angle2 = Math.atan2(e2yFrac * h - apexY, e2xFrac * w - apexX);
-  let halfAngle = Math.abs(angleDiff(angle1, angle2)) / 2;
-  halfAngle = Math.max(Math.PI / 180, Math.min(89 * Math.PI / 180, halfAngle));
-  // Bisector angle (handles wraparound correctly)
-  const midAngle = angle1 + angleDiff(angle2, angle1) / 2;
-  const dist1  = Math.hypot(e1xFrac * w - apexX, e1yFrac * h - apexY);
-  const dist2  = Math.hypot(e2xFrac * w - apexX, e2yFrac * h - apexY);
-  const length = Math.max(dist1, dist2);
-  if (length < 2) return null;
-  return {
-    officialId: official.id,
-    tipXFrac:   (apexX + length * Math.cos(midAngle)) / w,
-    tipYFrac:   (apexY + length * Math.sin(midAngle)) / h,
-    halfAngle,
-  };
-}
-
 function updateGhostCone(clientX, clientY) {
   if (!state.coneState) return;
   const wRect = fieldWrapper.getBoundingClientRect();
@@ -2481,28 +2430,16 @@ function updateGhostCone(clientX, clientY) {
   const { official } = state.coneState;
 
   if (state.coneState.step === 1) {
-    state.ghostCone = { officialId: official.id, tipXFrac: xFrac, tipYFrac: yFrac, halfAngle: 0 };
+    // Show a line from official to cursor (pt1 == pt2 collapses to a line)
+    state.ghostCone = { officialId: official.id, pt1XFrac: xFrac, pt1YFrac: yFrac, pt2XFrac: xFrac, pt2YFrac: yFrac };
   } else if (state.coneState.step === 2) {
-    if (state.coneVariant === 'edge') {
-      const { edge1XFrac, edge1YFrac } = state.coneState;
-      const shape = edgesToConeShape(official, edge1XFrac, edge1YFrac, xFrac, yFrac, w, h);
-      state.ghostCone = shape ? { ...shape } : null;
-    } else {
-      const apexX      = official.xFrac * w;
-      const apexY      = official.yFrac * h;
-      const tipX       = state.coneState.tipXFrac * w;
-      const tipY       = state.coneState.tipYFrac * h;
-      const midAngle   = Math.atan2(tipY - apexY, tipX - apexX);
-      const cursorAngle = Math.atan2(yFrac * h - apexY, xFrac * w - apexX);
-      let halfAngle    = Math.abs(angleDiff(cursorAngle, midAngle));
-      halfAngle = Math.max(Math.PI / 180, Math.min(89 * Math.PI / 180, halfAngle));
-      state.ghostCone = {
-        officialId: official.id,
-        tipXFrac:   state.coneState.tipXFrac,
-        tipYFrac:   state.coneState.tipYFrac,
-        halfAngle,
-      };
-    }
+    state.ghostCone = {
+      officialId: official.id,
+      pt1XFrac: state.coneState.pt1XFrac,
+      pt1YFrac: state.coneState.pt1YFrac,
+      pt2XFrac: xFrac,
+      pt2YFrac: yFrac,
+    };
   }
   redrawCanvas();
 }
@@ -2511,33 +2448,28 @@ function updateGhostCone(clientX, clientY) {
 function buildConeHandles(cone) {
   clearConeHandles();
   state.coneEditing = cone;
+  updateConeOfficialRing();
   const layer = document.getElementById('cone-handle-layer');
 
-  const tipHandle    = document.createElement('div');
-  tipHandle.className = 'cone-handle cone-handle-tip';
-  tipHandle.title    = 'Drag to move midline';
+  const pt1Handle = document.createElement('div');
+  pt1Handle.className = 'cone-handle cone-handle-tip';
+  pt1Handle.title = 'Drag to move point';
 
-  const edge1Handle  = document.createElement('div');
-  edge1Handle.className = 'cone-handle cone-handle-edge';
-  edge1Handle.title  = 'Drag to adjust angle';
-
-  const edge2Handle  = document.createElement('div');
-  edge2Handle.className = 'cone-handle cone-handle-edge';
-  edge2Handle.title  = 'Drag to adjust angle';
+  const pt2Handle = document.createElement('div');
+  pt2Handle.className = 'cone-handle cone-handle-edge';
+  pt2Handle.title = 'Drag to move point';
 
   const deleteHandle = document.createElement('div');
   deleteHandle.className = 'cone-handle cone-handle-delete';
   deleteHandle.textContent = '×';
   deleteHandle.title = 'Delete cone';
 
-  layer.appendChild(tipHandle);
-  layer.appendChild(edge1Handle);
-  layer.appendChild(edge2Handle);
+  layer.appendChild(pt1Handle);
+  layer.appendChild(pt2Handle);
   layer.appendChild(deleteHandle);
 
-  setupConeHandleDrag(tipHandle,   cone, 'tip');
-  setupConeHandleDrag(edge1Handle, cone, 'edge');
-  setupConeHandleDrag(edge2Handle, cone, 'edge');
+  setupConeHandleDrag(pt1Handle, cone, 'pt1');
+  setupConeHandleDrag(pt2Handle, cone, 'pt2');
 
   deleteHandle.addEventListener('pointerdown', e => {
     e.stopPropagation();
@@ -2554,37 +2486,32 @@ function buildConeHandles(cone) {
 }
 
 function repositionConeHandles(cone) {
-  const official = state.tokens.find(t => t.id === cone.officialId);
-  if (!official) return;
   const layer = document.getElementById('cone-handle-layer');
   const handles = layer.querySelectorAll('.cone-handle');
-  if (handles.length < 4) return;
+  if (handles.length < 3) return;
 
   const { w, h } = state.field;
-  const apexX = official.xFrac * w;
-  const apexY = official.yFrac * h;
-  const tipX  = cone.tipXFrac * w;
-  const tipY  = cone.tipYFrac * h;
-  const length = Math.hypot(tipX - apexX, tipY - apexY);
-  const midAngle = Math.atan2(tipY - apexY, tipX - apexX);
-  const e1x = apexX + length * Math.cos(midAngle + cone.halfAngle);
-  const e1y = apexY + length * Math.sin(midAngle + cone.halfAngle);
-  const e2x = apexX + length * Math.cos(midAngle - cone.halfAngle);
-  const e2y = apexY + length * Math.sin(midAngle - cone.halfAngle);
+  const pt1X = cone.pt1XFrac * w;
+  const pt1Y = cone.pt1YFrac * h;
+  const pt2X = cone.pt2XFrac * w;
+  const pt2Y = cone.pt2YFrac * h;
 
   function pos(el, x, y) { el.style.left = x + 'px'; el.style.top = y + 'px'; }
-  pos(handles[0], tipX, tipY);
-  pos(handles[1], e1x, e1y);
-  pos(handles[2], e2x, e2y);
-  // delete handle: offset from midline tip
-  const delOffX = Math.cos(midAngle - Math.PI / 2) * 20;
-  const delOffY = Math.sin(midAngle - Math.PI / 2) * 20;
-  pos(handles[3], tipX + delOffX, tipY + delOffY);
+  pos(handles[0], pt1X, pt1Y);
+  pos(handles[1], pt2X, pt2Y);
+  // delete handle: midpoint of pt1–pt2, offset perpendicularly
+  const midX = (pt1X + pt2X) / 2;
+  const midY = (pt1Y + pt2Y) / 2;
+  const edgeAngle = Math.atan2(pt2Y - pt1Y, pt2X - pt1X);
+  const delOffX = Math.cos(edgeAngle - Math.PI / 2) * 20;
+  const delOffY = Math.sin(edgeAngle - Math.PI / 2) * 20;
+  pos(handles[2], midX + delOffX, midY + delOffY);
 }
 
 function clearConeHandles() {
   document.getElementById('cone-handle-layer').innerHTML = '';
   state.coneEditing = null;
+  updateConeOfficialRing();
 }
 
 function setupConeHandleDrag(el, cone, type) {
@@ -2594,27 +2521,19 @@ function setupConeHandleDrag(el, cone, type) {
     e.stopPropagation();
     el.setPointerCapture(e.pointerId);
 
-    const snapshot = { tipXFrac: cone.tipXFrac, tipYFrac: cone.tipYFrac, halfAngle: cone.halfAngle };
+    const snapshot = { pt1XFrac: cone.pt1XFrac, pt1YFrac: cone.pt1YFrac, pt2XFrac: cone.pt2XFrac, pt2YFrac: cone.pt2YFrac };
 
     function onMove(ev) {
-      const official = state.tokens.find(t => t.id === cone.officialId);
-      if (!official) return;
       const wRect = fieldWrapper.getBoundingClientRect();
       const { x: fx, y: fy, w, h } = state.field;
-      const pxX = ev.clientX - wRect.left - fx;
-      const pxY = ev.clientY - wRect.top  - fy;
-
-      if (type === 'tip') {
-        cone.tipXFrac = Math.max(0, Math.min(1, pxX / w));
-        cone.tipYFrac = Math.max(0, Math.min(1, pxY / h));
+      const xFrac = Math.max(0, Math.min(1, (ev.clientX - wRect.left - fx) / w));
+      const yFrac = Math.max(0, Math.min(1, (ev.clientY - wRect.top  - fy) / h));
+      if (type === 'pt1') {
+        cone.pt1XFrac = xFrac;
+        cone.pt1YFrac = yFrac;
       } else {
-        const apexX  = official.xFrac * w;
-        const apexY  = official.yFrac * h;
-        const midAngle = Math.atan2(cone.tipYFrac * h - apexY, cone.tipXFrac * w - apexX);
-        const cursorAngle = Math.atan2(pxY - apexY, pxX - apexX);
-        let ha = Math.abs(angleDiff(cursorAngle, midAngle));
-        ha = Math.max(Math.PI / 180, Math.min(89 * Math.PI / 180, ha));
-        cone.halfAngle = ha;
+        cone.pt2XFrac = xFrac;
+        cone.pt2YFrac = yFrac;
       }
       repositionConeHandles(cone);
       redrawCanvas();
@@ -2623,11 +2542,14 @@ function setupConeHandleDrag(el, cone, type) {
     function onUp() {
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup',   onUp);
-      if (cone.tipXFrac !== snapshot.tipXFrac || cone.tipYFrac !== snapshot.tipYFrac || cone.halfAngle !== snapshot.halfAngle) {
+      if (cone.pt1XFrac !== snapshot.pt1XFrac || cone.pt1YFrac !== snapshot.pt1YFrac ||
+          cone.pt2XFrac !== snapshot.pt2XFrac || cone.pt2YFrac !== snapshot.pt2YFrac) {
         state.history.push({
           type: 'edit-cone', cone,
-          oldTipXFrac: snapshot.tipXFrac, oldTipYFrac: snapshot.tipYFrac, oldHalfAngle: snapshot.halfAngle,
-          newTipXFrac: cone.tipXFrac,     newTipYFrac: cone.tipYFrac,     newHalfAngle: cone.halfAngle,
+          oldPt1XFrac: snapshot.pt1XFrac, oldPt1YFrac: snapshot.pt1YFrac,
+          oldPt2XFrac: snapshot.pt2XFrac, oldPt2YFrac: snapshot.pt2YFrac,
+          newPt1XFrac: cone.pt1XFrac,     newPt1YFrac: cone.pt1YFrac,
+          newPt2XFrac: cone.pt2XFrac,     newPt2YFrac: cone.pt2YFrac,
         });
         state.future = [];
       }
