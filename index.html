@@ -351,6 +351,28 @@
     gap: 0;
   }
 
+  /* Draw tool type buttons in sub-panel */
+  .draw-tool-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 48px;
+    background: transparent;
+    border: 0px solid transparent;
+    cursor: pointer;
+    transition: background 0.15s;
+    flex-shrink: 0;
+  }
+  .draw-tool-btn:hover { background: rgba(255,255,255,0.07); }
+  .draw-tool-btn.active { background: #484848; }
+
+  #draw-tool-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
   body.erase-mode #field-wrapper { cursor: crosshair; }
 
 
@@ -781,8 +803,10 @@
       <span class="player-count-value" id="count-b">0</span>
     </div>
 
-    <!-- Draw sub-panel: colour + weight -->
+    <!-- Draw sub-panel: tool type + colour + weight -->
     <div id="subpanel-draw" class="subpanel">
+      <div id="draw-tool-row"></div>
+      <div class="sp-divider"></div>
       <div id="swatch-row"></div>
       <div class="sp-divider"></div>
       <div id="width-row"></div>
@@ -853,6 +877,9 @@ const state = {
   traces: [],
   currentTrace: null,
   draw: { color: '#ffffff', width: 5 },
+  drawTool: 'pencil',   // 'pencil' | 'line' | 'arrow' | 'circle' | 'rect'
+  shapeStart: null,     // {xFrac, yFrac} — start point of a shape drag
+  ghostShape: null,     // stroke-like preview rendered during shape drag
   field: { x: 0, y: 0, w: 0, h: 0 },
   penDetected: false,
   penDetectedTimer: null,
@@ -941,6 +968,7 @@ function init() {
   buildOfficialSubpanel();
   buildSwatches();
   buildWidthBtns();
+  buildDrawToolBtns();
 
   // Image load
   if (fieldImg.complete && fieldImg.naturalWidth > 0) {
@@ -1663,31 +1691,47 @@ function onCanvasPointerDown(e) {
   canvas.setPointerCapture(e.pointerId);
   state.drawing = true;
   const pt = canvasPt(e);
-  state.currentStroke = {
-    color: state.draw.color,
-    width: state.draw.width,
-    points: [pt],
-  };
-  const ctx = getCtx();
-  ctx.beginPath();
-  ctx.moveTo(pt.xFrac * canvas.width, pt.yFrac * canvas.height);
+  if (state.drawTool === 'pencil') {
+    state.currentStroke = {
+      type: 'pencil',
+      color: state.draw.color,
+      width: state.draw.width,
+      points: [pt],
+    };
+    const ctx = getCtx();
+    ctx.beginPath();
+    ctx.moveTo(pt.xFrac * canvas.width, pt.yFrac * canvas.height);
+  } else {
+    state.shapeStart = pt;
+  }
 }
 
 function onCanvasPointerMove(e) {
   if (state.mode === 'erase' && state.erasing) { eraseAt(canvasPt(e)); return; }
-  if (!state.drawing || !state.currentStroke) return;
+  if (!state.drawing) return;
   if (e.pointerType === 'pen') onPenActivity();
   if (state.penDetected && e.pointerType === 'touch') return;
   const pt = canvasPt(e);
-  state.currentStroke.points.push(pt);
-
-  const ctx = getCtx();
-  ctx.strokeStyle = state.currentStroke.color;
-  ctx.lineWidth   = state.currentStroke.width;
-  ctx.lineCap     = 'round';
-  ctx.lineJoin    = 'round';
-  ctx.lineTo(pt.xFrac * canvas.width, pt.yFrac * canvas.height);
-  ctx.stroke();
+  if (state.drawTool === 'pencil') {
+    if (!state.currentStroke) return;
+    state.currentStroke.points.push(pt);
+    const ctx = getCtx();
+    ctx.strokeStyle = state.currentStroke.color;
+    ctx.lineWidth   = state.currentStroke.width;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+    ctx.lineTo(pt.xFrac * canvas.width, pt.yFrac * canvas.height);
+    ctx.stroke();
+  } else {
+    if (!state.shapeStart) return;
+    state.ghostShape = {
+      type: state.drawTool,
+      color: state.draw.color,
+      width: state.draw.width,
+      points: [state.shapeStart, pt],
+    };
+    redrawCanvas();
+  }
 }
 
 function onCanvasPointerUp(e) {
@@ -1701,14 +1745,29 @@ function onCanvasPointerLeave(e) {
 }
 
 function commitStroke() {
-  if (!state.drawing || !state.currentStroke) return;
-  if (state.currentStroke.points.length > 1) {
-    state.strokes.push(state.currentStroke);
-    state.history.push({ type: 'stroke', stroke: state.currentStroke });
-    state.future = [];
+  if (!state.drawing) return;
+  if (state.drawTool === 'pencil') {
+    if (state.currentStroke && state.currentStroke.points.length > 1) {
+      state.strokes.push(state.currentStroke);
+      state.history.push({ type: 'stroke', stroke: state.currentStroke });
+      state.future = [];
+    }
+    state.currentStroke = null;
+  } else {
+    const shape = state.ghostShape;
+    if (shape) {
+      const [p0, p1] = shape.points;
+      if (p0.xFrac !== p1.xFrac || p0.yFrac !== p1.yFrac) {
+        state.strokes.push(shape);
+        state.history.push({ type: 'stroke', stroke: shape });
+        state.future = [];
+      }
+    }
+    state.shapeStart = null;
+    state.ghostShape = null;
+    redrawCanvas();
   }
   state.drawing = false;
-  state.currentStroke = null;
 }
 
 function canvasPt(e) {
@@ -1752,8 +1811,8 @@ function eraseAt(pt) {
   for (let i = state.strokes.length - 1; i >= 0; i--) {
     const stroke = state.strokes[i];
     const hit = Math.max(10, stroke.width / 2 + 4);
-    for (const p of stroke.points) {
-      if (Math.hypot(px - p.xFrac * w, py - p.yFrac * h) <= hit) {
+    for (const p of sampleStrokePoints(stroke, w, h)) {
+      if (Math.hypot(px - p.x, py - p.y) <= hit) {
         state.strokes.splice(i, 1);
         state.history.push({ type: 'erase-stroke', stroke });
         state.future = [];
@@ -1779,13 +1838,125 @@ function eraseAt(pt) {
   }
 }
 
+// Returns pixel-space sample points for hit-testing a stroke during erase.
+function sampleStrokePoints(stroke, w, h) {
+  const type = stroke.type || 'pencil';
+  if (type === 'pencil') {
+    return stroke.points.map(p => ({ x: p.xFrac * w, y: p.yFrac * h }));
+  }
+  const [p0, p1] = stroke.points;
+  const x0 = p0.xFrac * w, y0 = p0.yFrac * h;
+  const x1 = p1.xFrac * w, y1 = p1.yFrac * h;
+  if (type === 'line' || type === 'arrow') {
+    const pts = [];
+    for (let t = 0; t <= 1; t += 1 / 20) {
+      pts.push({ x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t });
+    }
+    return pts;
+  }
+  if (type === 'circle') {
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    const rx = Math.abs(x1 - x0) / 2, ry = Math.abs(y1 - y0) / 2;
+    const pts = [];
+    for (let i = 0; i < 36; i++) {
+      const a = (i / 36) * 2 * Math.PI;
+      pts.push({ x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a) });
+    }
+    return pts;
+  }
+  if (type === 'rect') {
+    const pts = [];
+    const N = 10;
+    for (let t = 0; t <= 1; t += 1 / N) {
+      pts.push({ x: x0 + (x1 - x0) * t, y: y0 }); // top
+      pts.push({ x: x0 + (x1 - x0) * t, y: y1 }); // bottom
+      pts.push({ x: x0, y: y0 + (y1 - y0) * t }); // left
+      pts.push({ x: x1, y: y0 + (y1 - y0) * t }); // right
+    }
+    return pts;
+  }
+  return [];
+}
+
+// Draw a single stroke (any type) onto ctx. w/h are canvas pixel dimensions.
+function drawShape(ctx, stroke, w, h) {
+  if (stroke.points.length < 2) return;
+  const type = stroke.type || 'pencil';
+  ctx.strokeStyle = stroke.color;
+  ctx.lineWidth   = stroke.width;
+  ctx.lineCap     = 'round';
+  ctx.lineJoin    = 'round';
+
+  if (type === 'pencil') {
+    ctx.beginPath();
+    ctx.moveTo(stroke.points[0].xFrac * w, stroke.points[0].yFrac * h);
+    for (let i = 1; i < stroke.points.length; i++) {
+      ctx.lineTo(stroke.points[i].xFrac * w, stroke.points[i].yFrac * h);
+    }
+    ctx.stroke();
+    return;
+  }
+
+  const [p0, p1] = stroke.points;
+  const x0 = p0.xFrac * w, y0 = p0.yFrac * h;
+  const x1 = p1.xFrac * w, y1 = p1.yFrac * h;
+
+  if (type === 'line') {
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+    return;
+  }
+
+  if (type === 'arrow') {
+    const headLen = Math.max(12, stroke.width * 3);
+    const angle = Math.atan2(y1 - y0, x1 - x0);
+    // Shorten the line body so it ends at the arrowhead base
+    const bx = x1 - Math.cos(angle) * headLen * 0.8;
+    const by = y1 - Math.sin(angle) * headLen * 0.8;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+    // Filled arrowhead triangle
+    const a1 = angle + Math.PI * 5 / 6;
+    const a2 = angle - Math.PI * 5 / 6;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 + Math.cos(a1) * headLen, y1 + Math.sin(a1) * headLen);
+    ctx.lineTo(x1 + Math.cos(a2) * headLen, y1 + Math.sin(a2) * headLen);
+    ctx.closePath();
+    ctx.fillStyle = stroke.color;
+    ctx.fill();
+    return;
+  }
+
+  if (type === 'circle') {
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    const rx = Math.abs(x1 - x0) / 2, ry = Math.abs(y1 - y0) / 2;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+    ctx.stroke();
+    return;
+  }
+
+  if (type === 'rect') {
+    ctx.beginPath();
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    return;
+  }
+}
+
 function redrawCanvas() {
   const ctx = getCtx();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const w = canvas.width;
   const h = canvas.height;
 
-  state.strokes.forEach(stroke => {
+  state.strokes.forEach(stroke => drawShape(ctx, stroke, w, h));
+  state.traces.forEach(stroke => {
+    // Traces are always pencil polylines
     if (stroke.points.length < 2) return;
     ctx.beginPath();
     ctx.strokeStyle = stroke.color;
@@ -1799,19 +1970,12 @@ function redrawCanvas() {
     ctx.stroke();
   });
 
-  state.traces.forEach(stroke => {
-    if (stroke.points.length < 2) return;
-    ctx.beginPath();
-    ctx.strokeStyle = stroke.color;
-    ctx.lineWidth   = stroke.width;
-    ctx.lineCap     = 'round';
-    ctx.lineJoin    = 'round';
-    ctx.moveTo(stroke.points[0].xFrac * w, stroke.points[0].yFrac * h);
-    for (let i = 1; i < stroke.points.length; i++) {
-      ctx.lineTo(stroke.points[i].xFrac * w, stroke.points[i].yFrac * h);
-    }
-    ctx.stroke();
-  });
+  // Ghost shape preview during drag
+  if (state.ghostShape) {
+    ctx.globalAlpha = 0.65;
+    drawShape(ctx, state.ghostShape, w, h);
+    ctx.globalAlpha = 1;
+  }
 
   // Cones are drawn on the dedicated cone-canvas (always behind tokens)
   const coneCtx = coneCanvas.getContext('2d');
@@ -1992,6 +2156,42 @@ function buildWidthBtns() {
   });
 }
 
+const DRAW_TOOLS = [
+  { tool: 'pencil', icon: 'icon-draw-pencil', title: 'Pencil' },
+  { tool: 'line',   icon: 'icon-draw-line',   title: 'Line' },
+  { tool: 'arrow',  icon: 'icon-draw-arrow',  title: 'Arrow' },
+  { tool: 'circle', icon: 'icon-draw-circle', title: 'Circle' },
+  { tool: 'rect',   icon: 'icon-draw-rect',   title: 'Rectangle' },
+];
+
+function buildDrawToolBtns() {
+  const row = document.getElementById('draw-tool-row');
+  DRAW_TOOLS.forEach(({ tool, icon, title }) => {
+    const btn = document.createElement('button');
+    btn.className = 'draw-tool-btn' + (tool === 'pencil' ? ' active' : '');
+    btn.title = title;
+    btn.dataset.drawTool = tool;
+
+    const img = document.createElement('img');
+    img.src = `./media/${icon}.svg`;
+    img.width = 20;
+    img.height = 20;
+    img.alt = '';
+    btn.appendChild(img);
+
+    btn.onclick = () => {
+      state.drawTool = tool;
+      state.ghostShape = null;
+      state.shapeStart = null;
+      state.drawing = false;
+      redrawCanvas();
+      document.querySelectorAll('.draw-tool-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+    row.appendChild(btn);
+  });
+}
+
 // ── Save / Load ─────────────────────────────────────────────
 function saveScenario() {
   const data = {
@@ -2000,7 +2200,7 @@ function saveScenario() {
       xFrac: +t.xFrac.toFixed(4), yFrac: +t.yFrac.toFixed(4),
     })),
     strokes: state.strokes.map(s => ({
-      color: s.color, width: s.width,
+      type: s.type || 'pencil', color: s.color, width: s.width,
       points: s.points.map(p => ({
         xFrac: +p.xFrac.toFixed(4), yFrac: +p.yFrac.toFixed(4)
       })),
