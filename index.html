@@ -660,6 +660,74 @@
   .keypad-confirm:active { background: #1b5e20 !important; }
   .keypad-del { font-size: 16px; }
 
+  /* Save-name dialog */
+  #save-name-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    background: rgba(0,0,0,0.45);
+    touch-action: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #save-name-dialog {
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 14px;
+    padding: 20px 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+    min-width: 280px;
+    touch-action: none;
+  }
+  #save-name-dialog label {
+    color: #ccc;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+  }
+  #save-name-input {
+    background: #111;
+    color: #fff;
+    border: 1px solid #555;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 15px;
+    font-family: inherit;
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  #save-name-input:focus { border-color: #888; }
+  .save-name-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .save-name-btn {
+    padding: 8px 18px;
+    border-radius: 8px;
+    border: 1px solid #555;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .save-name-btn-cancel {
+    background: #3a3a3a;
+    color: #ccc;
+  }
+  .save-name-btn-cancel:active { background: #444; }
+  .save-name-btn-confirm {
+    background: #2e7d32;
+    color: #fff;
+    border-color: #388e3c;
+  }
+  .save-name-btn-confirm:active { background: #1b5e20; }
+
   /* Inline edit input on token */
   .token-edit-input {
     position: absolute;
@@ -2223,6 +2291,57 @@ function buildDrawToolBtns() {
 
 // ── Save / Load ─────────────────────────────────────────────
 function saveScenario() {
+  const overlay = document.createElement('div');
+  overlay.id = 'save-name-overlay';
+  overlay.addEventListener('pointerdown', closeSaveDialog);
+
+  const dialog = document.createElement('div');
+  dialog.id = 'save-name-dialog';
+  dialog.addEventListener('pointerdown', e => e.stopPropagation());
+
+  const label = document.createElement('label');
+  label.textContent = 'Save as…';
+  label.htmlFor = 'save-name-input';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.id = 'save-name-input';
+  input.value = 'ref-scenario';
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); confirmSaveScenario(); }
+    if (e.key === 'Escape') { e.preventDefault(); closeSaveDialog(); }
+  });
+
+  const actions = document.createElement('div');
+  actions.className = 'save-name-actions';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'save-name-btn save-name-btn-cancel';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('pointerdown', e => { e.stopPropagation(); closeSaveDialog(); });
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'save-name-btn save-name-btn-confirm';
+  confirmBtn.textContent = 'Save';
+  confirmBtn.addEventListener('pointerdown', e => { e.stopPropagation(); confirmSaveScenario(); });
+
+  actions.appendChild(cancelBtn);
+  actions.appendChild(confirmBtn);
+  dialog.appendChild(label);
+  dialog.appendChild(input);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  // Select all text so user can immediately type a new name
+  requestAnimationFrame(() => { input.focus(); input.select(); });
+}
+
+function confirmSaveScenario() {
+  const input = document.getElementById('save-name-input');
+  const raw = (input ? input.value : '') || 'ref-scenario';
+  const name = raw.trim().replace(/[\\/:*?"<>|]/g, '_') || 'ref-scenario';
+
   const data = {
     tokens: state.tokens.map(t => ({
       team: t.team, label: t.label,
@@ -2249,9 +2368,14 @@ function saveScenario() {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = 'ref-scenario.json';
+  a.download = name + '.json';
   a.click();
   URL.revokeObjectURL(url);
+  closeSaveDialog();
+}
+
+function closeSaveDialog() {
+  document.getElementById('save-name-overlay')?.remove();
 }
 
 function loadScenarioClick() {
